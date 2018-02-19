@@ -3,3 +3,8 @@
 
 compute_fibers/*~
 compute_fibers/Makefile
+compute_fibers/*.e
+compute_fibers/run_*
+compute_fibers/*.o
+compute_fibers/nbproject/
+compute_fibers/.*
