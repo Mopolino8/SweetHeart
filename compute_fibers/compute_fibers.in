@@ -1,0 +1,26 @@
+# spatial dimension
+dimension = 2 
+
+# minimum approximation order
+p_order = 1 
+
+# Penalty term, it ensures interior penalty formulation stability
+ip_penalty = 4
+
+# initial number of elements in one dimension
+nx_initial = 2
+
+# number of refinement levels 
+num_refinement_levels = 8
+
+# exact solution flag
+exact_sol_flag = 3
+
+# domain_type
+domain_type = square
+
+# element type
+elem_type = TRI6
+
+# which IPDG solver
+assembler = periodic
