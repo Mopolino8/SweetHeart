@@ -36,7 +36,7 @@
 #include "libmesh/periodic_boundaries.h"
 #include "libmesh/periodic_boundary.h"
 #include "libmesh/petsc_vector.h"
-
+#include "libmesh/mesh_function.h"
 
 #include "libmesh/exact_solution.h"
 //#define QORDER TWENTYSIXTH
@@ -97,10 +97,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
     const unsigned int dim = mesh.mesh_dimension();
     LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>("EllipticDG");
     const Real ipdg_poisson_penalty = es.parameters.get<Real> ("ipdg_poisson_penalty");
-    
-    const double epsilon = es.parameters.get<Real>("Phi_epsilon");
-    const double epsilon_inv = (std::abs(epsilon) > std::numeric_limits<double>::epsilon() ? 1.0 / epsilon : 0.0);
-    
+        
     // had to remove the 'const' qualifier for dof_map because I need info about periodic boundaries
     DofMap& dof_map = ellipticdg_system.get_dof_map();
     PeriodicBoundaries* periodic_boundaries = dof_map.get_periodic_boundaries();
@@ -121,7 +118,19 @@ void assemble_ipdg_poisson(EquationSystems & es,
     
     // for boundary conditions
     const std::vector<int>& one_IDs = es.parameters.get<std::vector<int> >("one IDs");
-    const std::vector<int>& zero_IDs = es.parameters.get<std::vector<int> >("one IDs");
+    const std::vector<int>& zero_IDs = es.parameters.get<std::vector<int> >("zero IDs");
+    
+    std::cout << "one IDs = \n"; 
+    for (int ii = 0; ii < one_IDs.size(); ++ii)
+    {
+        std::cout << one_IDs[ii] << std::endl;
+    }
+    
+    std::cout << "zero IDs = \n"; 
+    for (int ii = 0; ii < zero_IDs.size(); ++ii)
+    {
+        std::cout << zero_IDs[ii] << std::endl;
+    }
     
     // for volume integrals
     const std::vector<Real> & JxW = fe->get_JxW();
@@ -174,7 +183,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
             {
                 for (unsigned int j=0; j<n_dofs; j++)
                 {
-                    Ke(i,j) += JxW[qp]*(epsilon_inv*phi[i][qp]*phi[j][qp] + dphi[i][qp]*dphi[j][qp]);
+                    Ke(i,j) += JxW[qp]*dphi[i][qp]*dphi[j][qp];
                 }
             }
         }
@@ -216,13 +225,15 @@ void assemble_ipdg_poisson(EquationSystems & es,
                         dirichlet = true;
                     }
                     
+                    //std::cout << bc_value << std::endl;
+                    
                     for (unsigned int i=0; i<n_dofs; i++)
                     {
                         // Matrix contribution
                         for (unsigned int j=0; j<n_dofs; j++)
                         {
-                            if(dirichlet)
-                            {
+                           if(dirichlet)
+                           {
                                 // stability
                                 Ke(i,j) += JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[i][qp] * phi_face[j][qp];
                                 
@@ -231,7 +242,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                         JxW_face[qp] *
                                         (phi_face[i][qp] * (dphi_face[j][qp]*qface_normals[qp]) +
                                         phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
-                            }
+                           }
                         }
                         
                         if (dirichlet)
@@ -449,37 +460,45 @@ int main (int argc, char** argv)
   parse_ID_string(one_IDs, one_IDs_string);
   
   // print out sideset IDs
-  BoundaryInfo* boundary_info = mesh.boundary_info;
+  const BoundaryInfo& boundary_info = *mesh.boundary_info;
   std::cout << "sideset IDs are... \n";
   std::set<short int>::iterator ii;
-  for(ii = boundary_info->get_side_boundary_ids().begin();  ii != boundary_info->get_side_boundary_ids().end(); ++ii)
+  for(ii = boundary_info.get_side_boundary_ids().begin();  ii != boundary_info.get_side_boundary_ids().end(); ++ii)
   {
       std::cout << *ii << std::endl;
   }
   std::cout << "\n";
   
-  // Create an equation system object
+  // create an equation system object
   EquationSystems equation_system (mesh);
   
-  // Set parameters for the equation system and the solver
+  // set parameters for the equation system and the solver
   equation_system.parameters.set<std::vector<int> >("zero IDs") = zero_IDs;
   equation_system.parameters.set<std::vector<int> >("one IDs") = one_IDs;
   equation_system.parameters.set<Real>("linear solver tolerance") = TOLERANCE * TOLERANCE;
   equation_system.parameters.set<unsigned int>("linear solver maximum iterations") = 1000;
   equation_system.parameters.set<Real>("penalty") = penalty;
   
-  equation_system.parameters.set<Real>("Phi_epsilon") = 0.0;
   equation_system.parameters.set<Real>("ipdg_poisson_penalty") = penalty;
   
-  // Create a system named ellipticdg
-  LinearImplicitSystem & ellipticdg_system = equation_system.add_system<LinearImplicitSystem> ("EllipticDG");
+  // create a system named ellipticdg
+  LinearImplicitSystem& ellipticdg_system = equation_system.add_system<LinearImplicitSystem> ("EllipticDG");
+  
+  // create fiber systems
+  LinearImplicitSystem& fiber_sys_x = equation_system.add_system<LinearImplicitSystem> ("fiber_sys_x");
+  LinearImplicitSystem& fiber_sys_y = equation_system.add_system<LinearImplicitSystem> ("fiber_sys_y");
+  LinearImplicitSystem& fiber_sys_z = equation_system.add_system<LinearImplicitSystem> ("fiber_sys_z");
   
   // add variables to system, attach assemble function, and initialize system
   ellipticdg_system.add_variable ("u", p_order, MONOMIAL);
+  fiber_sys_x.add_variable ("fibersx", CONSTANT, MONOMIAL);
+  fiber_sys_y.add_variable ("fibersy", CONSTANT, MONOMIAL); 
+  fiber_sys_z.add_variable ("fibersz", CONSTANT, MONOMIAL);
   ellipticdg_system.attach_assemble_function (assemble_ipdg_poisson);
   equation_system.init();
   
   // Solve the system
+  std::cout << "solving system....\n";
   ellipticdg_system.solve();
   
   libMesh::out << "Linear solver converged at step: "
@@ -488,8 +507,33 @@ int main (int argc, char** argv)
           << ellipticdg_system.final_linear_residual()
           << std::endl;   
   
+  // build MeshFunction to compute gradient at element centroids
+  MeshFunction mesh_fcn(equation_system,
+                        *ellipticdg_system.current_local_solution,
+                        ellipticdg_system.get_dof_map(),
+                        0);
+  mesh_fcn.init();
+  
+  // loop over elements
+  MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+  DofMap& fiber_dof_map = fiber_sys_x.get_dof_map();
+  DenseVector<Real> component;
+  std::vector<dof_id_type> fiber_dof_indices;
+  for ( ; el != end_el; ++el)
+  {  
+      component.resize(1);
+      const Elem* elem = *el;
+      fiber_dof_map.dof_indices(elem, fiber_dof_indices);
+      Gradient grad = mesh_fcn.gradient(elem->centroid());
+      Gradient normalized_grad = grad.unit();
+      component(0) = normalized_grad(0); fiber_sys_x.solution->add_vector(component, fiber_dof_indices);
+      component(0) = normalized_grad(1); fiber_sys_y.solution->add_vector(component, fiber_dof_indices);
+      component(0) = normalized_grad(2); fiber_sys_z.solution->add_vector(component, fiber_dof_indices);
+  }
+  
 #ifdef LIBMESH_HAVE_EXODUS_API
-  ExodusII_IO (mesh).write_discontinuous_exodusII("ipdg-harmonic.e", equation_system);
+  ExodusII_IO (mesh).write_discontinuous_exodusII("fibers_for_"+mesh_name, equation_system);
 #endif
     
 #endif // #ifndef LIBMESH_ENABLE_AMR

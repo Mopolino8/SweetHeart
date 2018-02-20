@@ -2,7 +2,7 @@
 dimension = 3 
 
 # minimum approximation order
-p_order = 1 
+p_order = 4 
 
 # Penalty term, it ensures interior penalty formulation stability
 ip_penalty = 4
@@ -11,8 +11,8 @@ ip_penalty = 4
 elem_type = TET4
 
 # boundary IDs
-zero_IDs = 163,15,2,645
-one_IDs = 100,101,14,2,8
+zero_IDs = 12602,12702
+one_IDs = 12600,12700
 
 #  mesh filename
 mesh_name = mitral_papillary_muscles.e
