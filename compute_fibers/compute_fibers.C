@@ -1,6 +1,7 @@
 // adapted from libMesh example, miscellaneous/ex5
 
 #include <iostream>
+#include <string>
 
 // LibMesh include files.
 #include "libmesh/libmesh.h"
@@ -58,6 +59,27 @@ is_physical_bdry(const Elem* elem,
     return at_physical_bdry;
 }
 
+// function to parse strings of integers
+void parse_ID_string(std::vector<int>& IDs, const std::string& IDs_string)
+{
+    std::string blah;
+    char foo;
+    for(int ii = 0; ii < IDs_string.size(); ++ii)
+    {
+        foo = IDs_string.at(ii);
+        if(foo != ',')
+        {
+            blah = blah + foo;
+        }
+        else
+        {
+            IDs.push_back(atoi(blah.c_str()));
+            blah.clear();
+        }
+    }
+    IDs.push_back(atoi(blah.c_str()));
+ }
+
 // function for assembling matrix
 void assemble_ipdg_poisson(EquationSystems & es,
         const std::string & system_name)
@@ -81,7 +103,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
     
     // had to remove the 'const' qualifier for dof_map because I need info about periodic boundaries
     DofMap& dof_map = ellipticdg_system.get_dof_map();
-    PeriodicBoundaries * periodic_boundaries = dof_map.get_periodic_boundaries();
+    PeriodicBoundaries* periodic_boundaries = dof_map.get_periodic_boundaries();
     
     FEType fe_type = ellipticdg_system.variable_type(0);
     
@@ -382,14 +404,42 @@ int main (int argc, char** argv)
   Order p_order                                = static_cast<Order>(input_file("p_order", 1));
   const Real penalty                           = input_file("ip_penalty", 10.);
   const unsigned int dim                       = input_file("dimension", 3);
-  const std::string assembler                  = input_file("assembler", "normal");
-  std::string elem_type                        = input_file("elem_type", "TRI3");
-  const std::string mesh_name                  = input_file("mesh_name");
+  const std::string elem_type                  = input_file("elem_type","TET4");
+  const std::string mesh_name                  = input_file("mesh_name","");
+  const std::string zero_IDs_string            = input_file("zero_IDs","");
+  const std::string one_IDs_string             = input_file("one_IDs","");
         
   // Create a simple FE mesh.
   Mesh mesh(init.comm(), dim);
-  mesh.read(mesh_name);
-  mesh.prepare_for_use();    
+  ExodusII_IO mesh_reader(mesh);
+  mesh_reader.read(mesh_name);
+  mesh.prepare_for_use();   
+  
+  // vectors for boundary IDs
+  std::vector<int> zero_IDs;
+  std::vector<int> one_IDs;
+ 
+  parse_ID_string(zero_IDs, zero_IDs_string);
+  parse_ID_string(one_IDs, one_IDs_string);
+  
+  for (int ii =0; ii < zero_IDs.size(); ii++)
+  {
+      std::cout << zero_IDs[ii] << std::endl;
+  }
+  
+  for (int ii =0; ii < one_IDs.size(); ii++)
+  {
+      std::cout << one_IDs[ii] << std::endl;
+  }
+  
+  return 0;
+    
+  // get boundary information
+  const BoundaryInfo& boundary_info = *mesh.boundary_info;
+  for (int ii = 0; ii < boundary_info.get_side_boundary_ids().size(); ++ii)
+  {
+      
+  }
   
   // Create an equation system object
   EquationSystems equation_system (mesh);
@@ -422,14 +472,8 @@ int main (int argc, char** argv)
 #ifdef LIBMESH_HAVE_EXODUS_API
   ExodusII_IO (mesh).write_discontinuous_exodusII("ipdg-harmonic.e", equation_system);
 #endif
-  
-  
-  
-  
-  
-  
+    
 #endif // #ifndef LIBMESH_ENABLE_AMR
 
-  // All done.
   return 0;
 }

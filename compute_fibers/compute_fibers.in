@@ -1,5 +1,5 @@
 # spatial dimension
-dimension = 2 
+dimension = 3 
 
 # minimum approximation order
 p_order = 1 
@@ -7,20 +7,13 @@ p_order = 1
 # Penalty term, it ensures interior penalty formulation stability
 ip_penalty = 4
 
-# initial number of elements in one dimension
-nx_initial = 2
-
-# number of refinement levels 
-num_refinement_levels = 8
-
-# exact solution flag
-exact_sol_flag = 3
-
-# domain_type
-domain_type = square
-
 # element type
-elem_type = TRI6
+elem_type = TET4
 
-# which IPDG solver
-assembler = periodic
+# boundary IDs
+zero_IDs = 163,15,2,645
+one_IDs = 100,101,14,2,8
+
+#  mesh filename
+mesh_name = mitral_papillary_muscles.e
+
