@@ -119,12 +119,15 @@ void assemble_ipdg_poisson(EquationSystems & es,
     fe_elem_face->attach_quadrature_rule(&qface);
     fe_neighbor_face->attach_quadrature_rule(&qface);
     
+    // for boundary conditions
+    const std::vector<int>& one_IDs = es.parameters.get<std::vector<int> >("one IDs");
+    const std::vector<int>& zero_IDs = es.parameters.get<std::vector<int> >("one IDs");
+    
     // for volume integrals
     const std::vector<Real> & JxW = fe->get_JxW();
     const std::vector<std::vector<RealGradient> > & dphi = fe->get_dphi();
     const std::vector<std::vector<Real> > &  phi = fe->get_phi();
     const std::vector<Point> & qvolume_points = fe->get_xyz();
-
     
     //  for surface integrals
     const std::vector<std::vector<Real> > &  phi_face = fe_elem_face->get_phi();
@@ -185,36 +188,60 @@ void assemble_ipdg_poisson(EquationSystems & es,
                 // Pointer to the element face
                 fe_elem_face->reinit(elem, side);
                 
+                // get sideset IDs
+                const std::vector<short int> bdry_ids = boundary_info.boundary_ids(elem, side);
+                
                 UniquePtr<Elem> elem_side (elem->build_side(side));
                 const unsigned int elem_b_order = static_cast<unsigned int> (fe_elem_face->get_order());
                 const double h_elem = elem->volume()/elem_side->volume() * 1./pow(elem_b_order, 2.);
                 
                 for (unsigned int qp=0; qp<qface.n_points(); qp++)
                 {
-                    // need to put something here for building fibers
-                    Number bc_value = 0.0;
-
+                    Number bc_value;
+                    bool dirichlet = false;
+                    // if we are on a boundary where we don't specify dirichlet 
+                    // conditions, the the Neumann condition
+                    // \nabla u \cdot n = 0 is imposed.
+                    // impose one boundary conditions
+                    if(find_first_of(bdry_ids.begin(), bdry_ids.end(), one_IDs.begin(), one_IDs.end()) != bdry_ids.end())
+                    {
+                        bc_value = 1.0;
+                        dirichlet = true;
+                    }  
+                    
+                    // impose zero boundary conditions
+                    if(find_first_of(bdry_ids.begin(), bdry_ids.end(), zero_IDs.begin(), zero_IDs.end()) != bdry_ids.end())
+                    {
+                        bc_value = 0.0;
+                        dirichlet = true;
+                    }
+                    
                     for (unsigned int i=0; i<n_dofs; i++)
                     {
                         // Matrix contribution
                         for (unsigned int j=0; j<n_dofs; j++)
                         {
-                            // stability
-                            Ke(i,j) += JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[i][qp] * phi_face[j][qp];
-                            
-                            // consistency
-                            Ke(i,j) -=
-                                    JxW_face[qp] *
-                                    (phi_face[i][qp] * (dphi_face[j][qp]*qface_normals[qp]) +
-                                    phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
+                            if(dirichlet)
+                            {
+                                // stability
+                                Ke(i,j) += JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[i][qp] * phi_face[j][qp];
+                                
+                                // consistency
+                                Ke(i,j) -=
+                                        JxW_face[qp] *
+                                        (phi_face[i][qp] * (dphi_face[j][qp]*qface_normals[qp]) +
+                                        phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
+                            }
                         }
-                                              
-                        // stability
-                        rhs_e(i) += JxW_face[qp] * bc_value * ipdg_poisson_penalty/h_elem * phi_face[i][qp];
                         
-                        // consistency
-                        rhs_e(i) -= JxW_face[qp] * dphi_face[i][qp] * (bc_value*qface_normals[qp]);
-                                                                    
+                        if (dirichlet)
+                        {
+                            // stability
+                            rhs_e(i) += JxW_face[qp] * bc_value * ipdg_poisson_penalty/h_elem * phi_face[i][qp];
+                            // consistency
+                            rhs_e(i) -= JxW_face[qp] * dphi_face[i][qp] * (bc_value*qface_normals[qp]);
+                        }
+                                                                                        
                     }
                 }
             }
@@ -415,36 +442,28 @@ int main (int argc, char** argv)
   mesh_reader.read(mesh_name);
   mesh.prepare_for_use();   
   
-  // vectors for boundary IDs
+  // populate vectors for boundary IDs
   std::vector<int> zero_IDs;
-  std::vector<int> one_IDs;
- 
+  std::vector<int> one_IDs; 
   parse_ID_string(zero_IDs, zero_IDs_string);
   parse_ID_string(one_IDs, one_IDs_string);
   
-  for (int ii =0; ii < zero_IDs.size(); ii++)
+  // print out sideset IDs
+  BoundaryInfo* boundary_info = mesh.boundary_info;
+  std::cout << "sideset IDs are... \n";
+  std::set<short int>::iterator ii;
+  for(ii = boundary_info->get_side_boundary_ids().begin();  ii != boundary_info->get_side_boundary_ids().end(); ++ii)
   {
-      std::cout << zero_IDs[ii] << std::endl;
+      std::cout << *ii << std::endl;
   }
-  
-  for (int ii =0; ii < one_IDs.size(); ii++)
-  {
-      std::cout << one_IDs[ii] << std::endl;
-  }
-  
-  return 0;
-    
-  // get boundary information
-  const BoundaryInfo& boundary_info = *mesh.boundary_info;
-  for (int ii = 0; ii < boundary_info.get_side_boundary_ids().size(); ++ii)
-  {
-      
-  }
+  std::cout << "\n";
   
   // Create an equation system object
   EquationSystems equation_system (mesh);
   
   // Set parameters for the equation system and the solver
+  equation_system.parameters.set<std::vector<int> >("zero IDs") = zero_IDs;
+  equation_system.parameters.set<std::vector<int> >("one IDs") = one_IDs;
   equation_system.parameters.set<Real>("linear solver tolerance") = TOLERANCE * TOLERANCE;
   equation_system.parameters.set<unsigned int>("linear solver maximum iterations") = 1000;
   equation_system.parameters.set<Real>("penalty") = penalty;
