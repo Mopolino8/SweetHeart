@@ -96,7 +96,11 @@ void assemble_ipdg_poisson(EquationSystems & es,
     if(point_locator.initialized()) { std::cout << "point locator initialized" << std::endl; } 
     const unsigned int dim = mesh.mesh_dimension();
     LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>("EllipticDG");
-    const Real ipdg_poisson_penalty = es.parameters.get<Real> ("ipdg_poisson_penalty");
+    const Real jump0_penalty = es.parameters.get<Real> ("jump0_penalty");
+    const Real jump1_penalty = es.parameters.get<Real> ("jump1_penalty");
+    const Real beta0 = es.parameters.get<Real> ("beta0");
+    const Real beta1 = es.parameters.get<Real> ("beta1");
+    const bool continuous_galerkin = es.parameters.get<bool>("continuous_galerkin");
         
     // had to remove the 'const' qualifier for dof_map because I need info about periodic boundaries
     DofMap& dof_map = ellipticdg_system.get_dof_map();
@@ -201,8 +205,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
                 const std::vector<short int> bdry_ids = boundary_info.boundary_ids(elem, side);
                 
                 UniquePtr<Elem> elem_side (elem->build_side(side));
-                const unsigned int elem_b_order = static_cast<unsigned int> (fe_elem_face->get_order());
-                const double h_elem = elem->volume()/elem_side->volume() * 1./pow(elem_b_order, 2.);
+                const double h0_elem = pow(elem->volume()/elem_side->volume(),beta0);
                 
                 for (unsigned int qp=0; qp<qface.n_points(); qp++)
                 {
@@ -232,22 +235,28 @@ void assemble_ipdg_poisson(EquationSystems & es,
                            if(dirichlet)
                            {
                                 // stability
-                                Ke(i,j) += JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[i][qp] * phi_face[j][qp];
+                                Ke(i,j) += JxW_face[qp] * jump0_penalty/h0_elem * phi_face[i][qp] * phi_face[j][qp];
                                 
                                 // consistency
-                                Ke(i,j) -=
-                                        JxW_face[qp] *
-                                        (phi_face[i][qp] * (dphi_face[j][qp]*qface_normals[qp]) +
-                                        phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
+                                if(!continuous_galerkin)
+                                {
+                                    Ke(i,j) -=
+                                            JxW_face[qp] *
+                                            (phi_face[i][qp] * (dphi_face[j][qp]*qface_normals[qp]) +
+                                            phi_face[j][qp] * (dphi_face[i][qp]*qface_normals[qp]));
+                                }
                            }
                         }
                         
                         if (dirichlet)
                         {
                             // stability
-                            rhs_e(i) += JxW_face[qp] * bc_value * ipdg_poisson_penalty/h_elem * phi_face[i][qp];
+                            rhs_e(i) += JxW_face[qp] * bc_value * jump0_penalty/h0_elem * phi_face[i][qp];
                             // consistency
-                            rhs_e(i) -= JxW_face[qp] * dphi_face[i][qp] * (bc_value*qface_normals[qp]);
+                            if(!continuous_galerkin)
+                            {
+                                rhs_e(i) -= JxW_face[qp] * dphi_face[i][qp] * (bc_value*qface_normals[qp]);
+                            }
                         }
                                                                                         
                     }
@@ -256,7 +265,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
             
             // we enter here if element side is either in the interior of the domain or 
             // on a periodic boundary.
-            else 
+            else if(!continuous_galerkin)
             {
                 // Store a pointer to the neighbor we are currently
                 // working on. if this side is not on the physical boundary,
@@ -293,11 +302,9 @@ void assemble_ipdg_poisson(EquationSystems & es,
                 {
                     // Pointer to the element side
                     UniquePtr<Elem> elem_side (elem->build_side(side));
-                    
-                    const unsigned int elem_b_order = static_cast<unsigned int>(fe_elem_face->get_order());
-                    const unsigned int neighbor_b_order = static_cast<unsigned int>(fe_neighbor_face->get_order());
-                    const double side_order = (elem_b_order + neighbor_b_order)/2.;
-                    const double h_elem = (elem->volume()/elem_side->volume()) * 1./pow(side_order,2.);
+               
+                    const double h0_elem = pow(elem->volume()/elem_side->volume(),beta0);
+                    const double h1_elem = pow(elem->volume()/elem_side->volume(),beta1);
                     
                     // The quadrature point locations on the neighbor side
                     std::vector<libMesh::Point> qface_neighbor_point;
@@ -353,7 +360,9 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                         phi_face[i][qp]*(qface_normals[qp]*dphi_face[j][qp]));
                                 
                                 // stability
-                                Kee(i,j) += JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[j][qp]*phi_face[i][qp];
+                                Kee(i,j) += JxW_face[qp] * jump0_penalty/h0_elem * phi_face[j][qp]*phi_face[i][qp];
+                                Kee(i,j) += JxW_face[qp] * jump1_penalty/h1_elem * (qface_normals[qp]*dphi_face[j][qp])*(qface_normals[qp]*dphi_face[i][qp]);
+
                             }
                         }
                                               
@@ -369,7 +378,9 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                 
                                 // stability
                                 Knn(i,j) +=
-                                        JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_neighbor_face[j][qp]*phi_neighbor_face[i][qp];
+                                        JxW_face[qp] * jump0_penalty/h0_elem * phi_neighbor_face[j][qp]*phi_neighbor_face[i][qp];
+                                Knn(i,j) += JxW_face[qp] * jump1_penalty/h1_elem * (qface_normals[qp]*dphi_neighbor_face[j][qp])*(qface_normals[qp]*dphi_neighbor_face[i][qp]);
+
                             }
                         }
                         
@@ -385,7 +396,8 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                         phi_face[j][qp]*(qface_normals[qp]*dphi_neighbor_face[i][qp]));
                                 
                                 // stability
-                                Kne(i,j) -= JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[j][qp]*phi_neighbor_face[i][qp];
+                                Kne(i,j) -= JxW_face[qp] * jump0_penalty/h0_elem * phi_face[j][qp]*phi_neighbor_face[i][qp];
+                                Kne(i,j) -= JxW_face[qp] * jump1_penalty/h1_elem * (qface_normals[qp]*dphi_face[j][qp])*(qface_normals[qp]*dphi_neighbor_face[i][qp]);
                             }
                         }
                                                
@@ -400,7 +412,8 @@ void assemble_ipdg_poisson(EquationSystems & es,
                                         phi_face[i][qp]*(qface_normals[qp]*dphi_neighbor_face[j][qp]));
                                 
                                 // stability
-                                Ken(i,j) -= JxW_face[qp] * ipdg_poisson_penalty/h_elem * phi_face[i][qp]*phi_neighbor_face[j][qp];
+                                Ken(i,j) -= JxW_face[qp] * jump0_penalty/h0_elem * phi_face[i][qp]*phi_neighbor_face[j][qp];
+                                Ken(i,j) -= JxW_face[qp] * jump1_penalty/h1_elem * (qface_normals[qp]*dphi_face[i][qp])*(qface_normals[qp]*dphi_neighbor_face[j][qp]);
                             }
                         }
                     }
@@ -437,12 +450,16 @@ int main (int argc, char** argv)
 
   //Read in parameters from the input file
   Order p_order                                = static_cast<Order>(input_file("p_order", 1));
-  const Real penalty                           = input_file("ip_penalty", 10.);
+  const Real jump0_penalty                     = input_file("jump0_penalty", 10.);
+  const Real jump1_penalty                     = input_file("jump1_penalty", 10.);
+  const Real beta0                             = input_file("beta0", 10.);
+  const Real beta1                             = input_file("beta1", 10.);
   const unsigned int dim                       = input_file("dimension", 3);
   const std::string elem_type                  = input_file("elem_type","TET4");
   const std::string mesh_name                  = input_file("mesh_name","");
   const std::string zero_IDs_string            = input_file("zero_IDs","");
   const std::string one_IDs_string             = input_file("one_IDs","");
+  const bool continuous_galerkin               = input_file("continuous_galerkin",false);
         
   // Create a simple FE mesh.
   Mesh mesh(init.comm(), dim);
@@ -474,7 +491,11 @@ int main (int argc, char** argv)
   equation_system.parameters.set<std::vector<int> >("one IDs") = one_IDs;
   equation_system.parameters.set<Real>("linear solver tolerance") = TOLERANCE * TOLERANCE;
   equation_system.parameters.set<unsigned int>("linear solver maximum iterations") = 1000;  
-  equation_system.parameters.set<Real>("ipdg_poisson_penalty") = penalty;
+  equation_system.parameters.set<Real>("jump0_penalty") = jump0_penalty;
+  equation_system.parameters.set<Real>("jump1_penalty") = jump0_penalty;
+  equation_system.parameters.set<Real>("beta0") = beta0;
+  equation_system.parameters.set<Real>("beta1") = beta1;
+  equation_system.parameters.set<bool>("continuous_galerkin") = continuous_galerkin;
   
   // create a system named ellipticdg
   LinearImplicitSystem& ellipticdg_system = equation_system.add_system<LinearImplicitSystem> ("EllipticDG");
@@ -485,7 +506,14 @@ int main (int argc, char** argv)
   LinearImplicitSystem& fiber_sys_z = equation_system.add_system<LinearImplicitSystem> ("fiber_sys_z");
   
   // add variables to system, attach assemble function, and initialize system
-  ellipticdg_system.add_variable ("u", p_order, MONOMIAL);
+  if(continuous_galerkin)
+  {
+      ellipticdg_system.add_variable ("u", static_cast<Order>(1), LAGRANGE);
+  }
+  else
+  {
+      ellipticdg_system.add_variable ("u", p_order, MONOMIAL);
+  }
   fiber_sys_x.add_variable ("fibersx", CONSTANT, MONOMIAL);
   fiber_sys_y.add_variable ("fibersy", CONSTANT, MONOMIAL); 
   fiber_sys_z.add_variable ("fibersz", CONSTANT, MONOMIAL);
