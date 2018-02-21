@@ -211,7 +211,6 @@ void assemble_ipdg_poisson(EquationSystems & es,
                     // if we are on a boundary where we don't specify dirichlet 
                     // conditions, the the Neumann condition
                     // \nabla u \cdot n = 0 is imposed.
-                    // impose one boundary conditions
                     if(find_first_of(bdry_ids.begin(), bdry_ids.end(), one_IDs.begin(), one_IDs.end()) != bdry_ids.end())
                     {
                         bc_value = 1.0;
@@ -224,9 +223,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
                         bc_value = 0.0;
                         dirichlet = true;
                     }
-                    
-                    //std::cout << bc_value << std::endl;
-                    
+                                        
                     for (unsigned int i=0; i<n_dofs; i++)
                     {
                         // Matrix contribution
@@ -259,7 +256,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
             
             // we enter here if element side is either in the interior of the domain or 
             // on a periodic boundary.
-            else
+            else 
             {
                 // Store a pointer to the neighbor we are currently
                 // working on. if this side is not on the physical boundary,
@@ -476,9 +473,7 @@ int main (int argc, char** argv)
   equation_system.parameters.set<std::vector<int> >("zero IDs") = zero_IDs;
   equation_system.parameters.set<std::vector<int> >("one IDs") = one_IDs;
   equation_system.parameters.set<Real>("linear solver tolerance") = TOLERANCE * TOLERANCE;
-  equation_system.parameters.set<unsigned int>("linear solver maximum iterations") = 1000;
-  equation_system.parameters.set<Real>("penalty") = penalty;
-  
+  equation_system.parameters.set<unsigned int>("linear solver maximum iterations") = 1000;  
   equation_system.parameters.set<Real>("ipdg_poisson_penalty") = penalty;
   
   // create a system named ellipticdg
@@ -525,15 +520,24 @@ int main (int argc, char** argv)
       component.resize(1);
       const Elem* elem = *el;
       fiber_dof_map.dof_indices(elem, fiber_dof_indices);
+      //Gradient grad;
+      /*for (int node = 0; node < elem->n_nodes(); ++node)
+      {
+          grad = grad + mesh_fcn.gradient(elem->point(node))/Real(elem->n_nodes());
+      }*/
       Gradient grad = mesh_fcn.gradient(elem->centroid());
       Gradient normalized_grad = grad.unit();
       component(0) = normalized_grad(0); fiber_sys_x.solution->add_vector(component, fiber_dof_indices);
       component(0) = normalized_grad(1); fiber_sys_y.solution->add_vector(component, fiber_dof_indices);
       component(0) = normalized_grad(2); fiber_sys_z.solution->add_vector(component, fiber_dof_indices);
+      
   }
   
 #ifdef LIBMESH_HAVE_EXODUS_API
   ExodusII_IO (mesh).write_discontinuous_exodusII("fibers_for_"+mesh_name, equation_system);
+  ExodusII_IO  poo(mesh);
+  poo.write("test.e");
+  poo.write_element_data(equation_system);
 #endif
     
 #endif // #ifndef LIBMESH_ENABLE_AMR

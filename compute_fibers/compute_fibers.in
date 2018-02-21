@@ -2,10 +2,10 @@
 dimension = 3 
 
 # minimum approximation order
-p_order = 4 
+p_order = 1 
 
 # Penalty term, it ensures interior penalty formulation stability
-ip_penalty = 4
+ip_penalty = 10
 
 # element type
 elem_type = TET4
