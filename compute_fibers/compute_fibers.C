@@ -265,23 +265,23 @@ void assemble_ipdg_poisson(EquationSystems & es,
             
             // we enter here if element side is either in the interior of the domain or 
             // on a periodic boundary.
-            else if(!continuous_galerkin)
+             // element side is either in the interior of the domain or 
+            // on a periodic boundary.
+            else if (!continuous_galerkin)
             {
-                // Store a pointer to the neighbor we are currently
-                // working on. if this side is not on the physical boundary,
-                // then it must be on a periodic boundary.
-                const Elem * neighbor = elem->topological_neighbor(side,
-                                                                   mesh,
-                                                                   point_locator,
-                                                                   periodic_boundaries);
-      
+                // get topological neighbor of element
+                const Elem* neighbor = elem->topological_neighbor(side,
+                                                                  mesh,
+                                                                  point_locator,
+                                                                  periodic_boundaries);
+                               
                 // find id of corresponding neighbor side,
                 // since elements with periodic boundaries may not share the same
                 // side in physical space.
                 int blah = 0;
                 for (int foo = 0; foo < neighbor->n_sides(); foo++)
                 {
-                    const Elem *  foo_elem = neighbor->topological_neighbor(foo, mesh, point_locator, periodic_boundaries);
+                    const Elem*  foo_elem = neighbor->topological_neighbor(foo, mesh, point_locator, periodic_boundaries);
                     
                     if (!(foo_elem == libmesh_nullptr))
                     {
@@ -290,11 +290,10 @@ void assemble_ipdg_poisson(EquationSystems & es,
                 }
                 const int neighbor_side = blah;
                                          
-                // Get the global id of the element and the neighbor
+                // Get the global element id of the element and the neighbor
                 const unsigned int elem_id = elem->id();
                 const unsigned int neighbor_id = neighbor->id();
-                
-      
+                             
                 if ((neighbor->active() &&
                         (neighbor->level() == elem->level()) &&
                         (elem_id < neighbor_id)) ||
@@ -302,40 +301,77 @@ void assemble_ipdg_poisson(EquationSystems & es,
                 {
                     // Pointer to the element side
                     UniquePtr<Elem> elem_side (elem->build_side(side));
-               
+                    
+                    // penalty parameters
                     const double h0_elem = pow(elem->volume()/elem_side->volume(),beta0);
                     const double h1_elem = pow(elem->volume()/elem_side->volume(),beta1);
-                    
-                    // The quadrature point locations on the neighbor side
+                                       
+                    // vectors to store quad point locations in physical space
+                    // and the reference element
                     std::vector<libMesh::Point> qface_neighbor_point;
                     std::vector<libMesh::Point> qface_neighbor_ref_point;
                     std::vector<libMesh::Point> temp;
-                                                            
-                    // Reinitialize shape functions on the element side
+                    std::vector<libMesh::Point> qface_point;
+                    
+                    // initialize shape functions on element side
                     fe_elem_face->reinit(elem, side);
-                    
-                    // re init this temporarily...
-                    fe_neighbor_face->reinit(neighbor, neighbor_side);
-                    
-                    // Get the physical locations of the element quadrature points
-                    qface_neighbor_point = fe_neighbor_face->get_xyz();
-                    
-                    // Find their ref locations on the neighbor
-                    FEInterface::inverse_map (neighbor->dim(),
-                                              fe->get_fe_type(),
-                                              neighbor,
-                                              qface_neighbor_point,
-                                              qface_neighbor_ref_point);
                                         
-                    // rearrange ref points on the neighbor side for boundary integration
-                    for (int ii = 0; ii < qface.n_points(); ii++)
+                    // if this is true, we are in fact on a periodic boundary
+                    if (elem->neighbor(side) == libmesh_nullptr)
                     {
-                        temp.push_back(qface_neighbor_ref_point[qface.n_points() - 1 - ii]);
+                        // grab the boundary id (sideset id) of the neighbor side
+                        const short int bdry_id = boundary_info.boundary_id(neighbor, neighbor_side);
+                        PeriodicBoundaryBase* periodic_boundary = periodic_boundaries->boundary(bdry_id);
+                        
+                        // re init this temporarily to get the physical locations of the 
+                        // quad points on the the neighbor side
+                        fe_neighbor_face->reinit(neighbor, neighbor_side);
+                        
+                        // Get the physical locations of the element quadrature points
+                        qface_neighbor_point = fe_neighbor_face->get_xyz();
+                        qface_point = fe_elem_face->get_xyz();
+                        
+                        // Find their ref locations of neighbor side quad points
+                        FEInterface::inverse_map (neighbor->dim(),
+                                                  fe->get_fe_type(),
+                                                  neighbor,
+                                                  qface_neighbor_point,
+                                                  qface_neighbor_ref_point);
+                        
+                        // rearrange ref points on the neighbor side for boundary integration
+                        // to be consistent with those on the element side
+                        for (int ii = 0; ii < qface_point.size(); ii++)
+                        {  
+                            for (int jj = 0; jj < qface_neighbor_point.size(); ++jj)
+                            {
+                                Point pp = periodic_boundary->get_corresponding_pos(qface_neighbor_point[jj]);
+                                Point diff = qface_point[ii] - pp;
+                                if(diff.norm()/qface_point[ii].norm() < TOLERANCE)
+                                {
+                                    temp.push_back(qface_neighbor_ref_point[jj]);
+                                }
+                            }
+                        }
+                        // Calculate the neighbor element shape functions at those locations
+                        fe_neighbor_face->reinit(neighbor, &temp);
                     }
-                    
-                    // Calculate the neighbor element shape functions at those locations
-                    fe_neighbor_face->reinit(neighbor, &temp);
-                                       
+                    // otherwise, we are on an interior edge and the element and its neighbor
+                    // share a side in physical space
+                    else
+                    {
+                        // Get the physical locations of the element quadrature points
+                        qface_point = fe_elem_face->get_xyz();
+                        
+                        // Find their locations on the neighbor
+                        FEInterface::inverse_map (elem->dim(),
+                                fe->get_fe_type(),
+                                neighbor,
+                                qface_point,
+                                qface_neighbor_ref_point);
+                        
+                        // Calculate the neighbor element shape functions at those locations
+                        fe_neighbor_face->reinit(neighbor, &qface_neighbor_ref_point);
+                    }
                   
                     std::vector<dof_id_type> neighbor_dof_indices;
                     dof_map.dof_indices (neighbor, neighbor_dof_indices);

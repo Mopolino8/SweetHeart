@@ -2,12 +2,12 @@
 dimension = 3 
 
 # minimum approximation order
-p_order = 1 
+p_order = 2 
 
 # whether or not to do continuous Galerkin
-continuous_galerkin = true
+continuous_galerkin = false
 
-# Penalty term, it ensures interior penalty formulation stability
+# for the penalty terms
 jump0_penalty = 10
 jump1_penalty = 10
 beta0 = 0.5
