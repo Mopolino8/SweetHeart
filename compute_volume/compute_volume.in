@@ -1,0 +1,25 @@
+# spatial dimension
+dimension = 3 
+
+# minimum approximation order
+p_order = 1 
+
+# whether or not to do continuous Galerkin
+continuous_galerkin = false
+
+# for the penalty terms
+jump0_penalty = 10
+jump1_penalty = 10
+beta0 = 0.5
+beta1 = 1.0
+
+# element type
+elem_type = TET10
+
+# boundary IDs
+zero_IDs = 12602,12702
+one_IDs = 12600,12700
+
+#  mesh filename
+mesh_name = mitral_papillary_muscles.e
+

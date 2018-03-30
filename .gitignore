@@ -8,3 +8,11 @@ compute_fibers/run_*
 compute_fibers/*.o
 compute_fibers/nbproject/
 compute_fibers/.*
+
+compute_volume/*~
+compute_volume/Makefile
+compute_volume/*.e
+compute_volume/run_*
+compute_volume/*.o
+compute_volume/nbproject/
+compute_volume/.*
