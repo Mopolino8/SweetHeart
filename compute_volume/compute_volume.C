@@ -113,6 +113,7 @@ int main (int argc, char** argv)
   equation_system.init();
   
   std::vector<dof_id_type> node_id_list;
+  std::vector<dof_id_type> sorted_node_id_list;
   std::vector<Point> perimeter_list;
   std::vector<Point> sorted_perimeter_list;
   std::vector<boundary_id_type> bc_id_list;
@@ -126,22 +127,25 @@ int main (int argc, char** argv)
       centroid += *node/static_cast<double>(node_id_list.size());
       perimeter_list.push_back(*node);
   }
-    std::cout << "here \n";
 
   // make sure nodes are sorted with a particular orientation
   Point temp_point;
+  dof_id_type temp_dof_id;
   double max_dist = std::numeric_limits<double>::max();
   sorted_perimeter_list.push_back(perimeter_list[0]);
+  sorted_node_id_list.push_back(node_id_list[0]);
   for (int kk = 1; kk < perimeter_list.size(); ++kk)
   {
       Point dist = perimeter_list[kk] - sorted_perimeter_list[0];
       if(dist.norm() < max_dist)
       {
           temp_point = perimeter_list[kk];
+          temp_dof_id = node_id_list[kk];
           max_dist = dist.norm();
       }
   }
   sorted_perimeter_list.push_back(temp_point);
+  sorted_node_id_list.push_back(temp_dof_id);
   
   max_dist = std::numeric_limits<double>::max();
   for (int kk = 2; kk < perimeter_list.size(); ++kk)
@@ -154,35 +158,22 @@ int main (int argc, char** argv)
               if(dist.norm() < max_dist)
               {
                   temp_point = perimeter_list[ll];
+                  temp_dof_id = node_id_list[ll];
                   max_dist = dist.norm();
               }
           }
       }
       sorted_perimeter_list.push_back(temp_point);
+      sorted_node_id_list.push_back(temp_dof_id);
       max_dist = std::numeric_limits<double>::max();
   }
-  
-  std::cout << "\n centroid = \n";
-  centroid.print();
-  std::cout << "\n \n";
-  
-  std::cout << "size perimeter_list = " << perimeter_list.size();
-  std::cout << "size sorted perimeter_list = " << sorted_perimeter_list.size();
-  
-  for (int ii = 0; ii < node_id_list.size(); ++ii)
-  {
-      std::cout << "\n";
-      std::cout << node_id_list[ii] << " ";
-      Node* node = &mesh.node_ref(node_id_list[ii]);
-      node->print();
-  }
-  
-  std::cout << "\n \n";
-  
+
+  // output to file to check
+  std::ofstream stuff_stream;
+  stuff_stream.open("test_output.dat");
   for (int ii = 0; ii < sorted_perimeter_list.size(); ++ii)
   {
-      sorted_perimeter_list[ii].print();
-      std::cout << "\n";
+      stuff_stream << sorted_perimeter_list[ii](0) << " " << sorted_perimeter_list[ii](1) << " " << sorted_perimeter_list[ii](2) << "\n" ;
   }
   
   // loop over node sets 

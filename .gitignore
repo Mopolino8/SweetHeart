@@ -1,6 +1,5 @@
 *~
 
-
 compute_fibers/*~
 compute_fibers/Makefile
 compute_fibers/*.e
@@ -16,3 +15,4 @@ compute_volume/run_*
 compute_volume/*.o
 compute_volume/nbproject/
 compute_volume/.*
+compute_volume/*.dat
