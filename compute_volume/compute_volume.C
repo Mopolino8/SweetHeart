@@ -164,6 +164,8 @@ int main (int argc, char** argv)
       }
       sorted_perimeter_list.push_back(temp_point);
       sorted_node_id_list.push_back(temp_dof_id);
+      std::cout << "\n";
+      temp_point.print();
       max_dist = std::numeric_limits<double>::max();
   }
 
@@ -184,7 +186,8 @@ int main (int argc, char** argv)
       dA_web[m].resize(num_web_nodes);
   }
    
-  // here is Boyce's code from IBInstrumentPanel.
+  double web_contribution = 0.0;
+  // here is Boyce's code from IBInstrumentPanel
   for (int m = 0; m < num_perimeter_nodes; ++m)
   {
       const Point X_perimeter0(sorted_perimeter_list[m]);
@@ -243,11 +246,60 @@ int main (int argc, char** argv)
           // within a plane.  Also, note that if X2 == X3, the following is
           // simply the formula for the area-weighted normal to a triangle.
           dA_web[m][n] = 0.5 * (X2 - X0).cross(X3 - X1);
-   
+
+          // output web to make sure it looks reasonable
           stuff_stream << X_web[m][n](0) << " " << X_web[m][n](1) << " " << X_web[m][n](2) << "\n" ;
-            
+          
+          // compute surface integral
+          web_contribution += (1.0/3.0) * dA_web[m][n] * X_web[m][n];
       }
   }
+
+  // compute surface integral over rest of mesh interior
+  FEType fe_type = volume_system.variable_type(0);
+  
+  UniquePtr<FEBase> fe_elem_face(FEBase::build(dim, fe_type));
+  QGauss qface(dim-1, fe_type.default_quadrature_order());
+  fe_elem_face->attach_quadrature_rule(&qface);
+ 
+  //  for surface integrals
+  const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
+  const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
+  const std::vector<Point> & qface_points = fe_elem_face->get_xyz();
+    
+  // loop over elements
+  MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+  
+  double mesh_contribution = 0.0;
+  for ( ; el != end_el; ++el)
+  {  
+      
+      const Elem * elem = *el;
+            
+      // looping over element sides
+      for (unsigned int side=0; side<elem->n_sides(); side++)
+      {
+          // Pointer to the element face
+          fe_elem_face->reinit(elem, side);
+          
+          // get sideset IDs
+          const std::vector<short int> bdry_ids = boundary_info.boundary_ids(elem, side);
+          
+          // ID 103 = mesh interior surface
+          if(find(bdry_ids.begin(), bdry_ids.end(), 103) != bdry_ids.end())
+          {
+              for(int qp = 0; qp < qface_points.size(); ++qp)
+              {
+                  mesh_contribution += -(1.0/3.0) * qface_points[qp] * qface_normals[qp] * JxW_face[qp];
+              }
+          }
+      
+      }
+      
+  }
+  
+  std::cout << "\n total volume = " << mesh_contribution + web_contribution << "\n";  
   
   stuff_stream.close();
   
