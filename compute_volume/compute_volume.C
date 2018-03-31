@@ -39,7 +39,6 @@
 #include "libmesh/mesh_function.h"
 
 #include "libmesh/exact_solution.h"
-//#define QORDER TWENTYSIXTH
 
 // Bring in everything from the libMesh namespace
 using namespace libMesh;
@@ -171,22 +170,85 @@ int main (int argc, char** argv)
   // output to file to check
   std::ofstream stuff_stream;
   stuff_stream.open("test_output.dat");
-  for (int ii = 0; ii < sorted_perimeter_list.size(); ++ii)
+  
+  // create web
+  const int num_perimeter_nodes = sorted_perimeter_list.size();
+  const int num_web_nodes = 5;
+    
+  std::vector<std::vector<Point> >  X_web, dA_web;
+  X_web.resize(num_perimeter_nodes);
+  dA_web.resize(num_perimeter_nodes);
+  for (int m = 0; m < num_perimeter_nodes; ++m)
   {
-      stuff_stream << sorted_perimeter_list[ii](0) << " " << sorted_perimeter_list[ii](1) << " " << sorted_perimeter_list[ii](2) << "\n" ;
+      X_web[m].resize(num_web_nodes);
+      dA_web[m].resize(num_web_nodes);
+  }
+   
+  for (int m = 0; m < num_perimeter_nodes; ++m)
+  {
+      const Point X_perimeter0(sorted_perimeter_list[m]);
+      const Point dX0((centroid - X_perimeter0) / static_cast<double>(num_web_nodes));
+      
+      const Point X_perimeter1(sorted_perimeter_list[(m + 1) % num_perimeter_nodes]);
+      const Point dX1((centroid - X_perimeter1) / static_cast<double>(num_web_nodes));
+      
+       // Away from the center of the web, each web patch is a planar
+      // quadrilateral.  At the web centroid, the quadrilateral is degenerate,
+      // i.e., it is a triangle.
+      for (int n = 0; n < num_web_nodes; ++n)
+      {
+          // Compute the four vertices of the quadrilateral web patch.
+          //
+          // Note that here the vertices are placed in "standard" (i.e.,
+          // "counter-clockwise") orientation.
+          const Point X0(X_perimeter0 + static_cast<double>(n) * dX0);
+          const Point X1(X_perimeter1 + static_cast<double>(n) * dX1);
+          const Point X2(X_perimeter1 + static_cast<double>(n + 1) * dX1);
+          const Point X3(X_perimeter0 + static_cast<double>(n + 1) * dX0);
+          
+          // Compute the midpoints of the edges of the quadrilateral.
+          const Point X01(0.5 * (X0 + X1));
+          const Point X12(0.5 * (X1 + X2));
+          const Point X23(0.5 * (X2 + X3));
+          const Point X30(0.5 * (X3 + X0));
+          
+          // Construct a parametric representation of the lines connecting the
+          // midpoints of the edges.
+          const Point l0 = X01;
+          const Point d0 = X23 - X01;
+          
+          const Point l1 = X12;
+          const Point d1 = X30 - X12;
+          
+          // Compute the centroid as the intersection of the lines connecting
+          // the midpoints of the edges.
+          const double d0d0 = d0*d0;
+          const double d0d1 = d0*d1;
+          const double d1d1 = d1*d1;
+          const double d0l0 = d0*l0;
+          const double d0l1 = d0*l1;
+          const double d1l0 = d1*l0;
+          const double d1l1 = d1*l1;
+          const double t = (-d0l0 * d1d1 + d0l1 * d1d1 + d0d1 * d1l0 - d0d1 * d1l1) / (-d0d1 * d0d1 + d1d1 * d0d0);
+          const double s = (d1l0 * d0d0 - d0d1 * d0l0 + d0d1 * d0l1 - d1l1 * d0d0) / (-d0d1 * d0d1 + d1d1 * d0d0);
+          X_web[m][n] = 0.5 * (l0 + t * d0 + l1 + s * d1);
+          
+          // Compute the area-weighted normal to the quadrilateral web patch,
+          // i.e.,
+          //
+          //    dA = 0.5*((X2-X0) X (X3-X1))
+          //
+          // Note that by construction, the quadrilateral is guaranteed to lie
+          // within a plane.  Also, note that if X2 == X3, the following is
+          // simply the formula for the area-weighted normal to a triangle.
+          dA_web[m][n] = 0.5 * (X2 - X0).contract(X3 - X1);
+   
+          stuff_stream << X_web[m][n](0) << " " << X_web[m][n](1) << " " << X_web[m][n](2) << "\n" ;
+            
+      }
   }
   
-  // loop over node sets 
-  
-      // loop over nodes in mesh
-  //    for (MeshBase::node_iterator it = mesh.local_nodes_begin(); it != mesh.local_nodes_end(); ++it)
-  //    {
-  //        Node* n = *it;
-       
-             
-   //   }
-    
-  
+  stuff_stream.close();
   
 #endif // #ifndef LIBMESH_ENABLE_AMR
 
