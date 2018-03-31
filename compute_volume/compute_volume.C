@@ -184,6 +184,7 @@ int main (int argc, char** argv)
       dA_web[m].resize(num_web_nodes);
   }
    
+  // here is Boyce's code from IBInstrumentPanel.
   for (int m = 0; m < num_perimeter_nodes; ++m)
   {
       const Point X_perimeter0(sorted_perimeter_list[m]);
@@ -241,7 +242,7 @@ int main (int argc, char** argv)
           // Note that by construction, the quadrilateral is guaranteed to lie
           // within a plane.  Also, note that if X2 == X3, the following is
           // simply the formula for the area-weighted normal to a triangle.
-          dA_web[m][n] = 0.5 * (X2 - X0).contract(X3 - X1);
+          dA_web[m][n] = 0.5 * (X2 - X0).cross(X3 - X1);
    
           stuff_stream << X_web[m][n](0) << " " << X_web[m][n](1) << " " << X_web[m][n](2) << "\n" ;
             
