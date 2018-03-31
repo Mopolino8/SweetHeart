@@ -43,21 +43,37 @@
 // Bring in everything from the libMesh namespace
 using namespace libMesh;
 
-inline bool
-is_physical_bdry(const Elem* elem,
-        const unsigned short int side,
-        const BoundaryInfo& boundary_info,
-        const DofMap& dof_map)
+// function to parse strings of integers
+void parse_ID_string(std::vector<int>& IDs, const std::string& IDs_string)
 {
-    const std::vector<short int>& bdry_ids = boundary_info.boundary_ids(elem, side);
-    bool at_physical_bdry = !elem->neighbor(side);
-    for (std::vector<short int>::const_iterator cit = bdry_ids.begin(); cit != bdry_ids.end(); ++cit)
+    std::string blah;
+    char foo;
+    for(int ii = 0; ii < IDs_string.size(); ++ii)
     {
-        if (dof_map.is_periodic_boundary(*cit)) at_physical_bdry = false;
+        foo = IDs_string.at(ii);
+        if(foo != ',')
+        {
+            blah = blah + foo;
+        }
+        else
+        {
+            IDs.push_back(atoi(blah.c_str()));
+            blah.clear();
+        }
     }
-    return at_physical_bdry;
-}
+    IDs.push_back(atoi(blah.c_str()));
+ }
 
+template<typename T>
+void print_vector(std::vector<T>& v)
+{
+    std::cout << "\n";
+    for(int ii = 0; ii < v.size(); ++ii)
+    {
+        std::cout << v[ii] << "\n";
+    }
+    std::cout << "\n";
+}
 
 // main function
 int main (int argc, char** argv)
@@ -75,12 +91,20 @@ int main (int argc, char** argv)
   //Read in parameters from the input file
   const unsigned int dim                       = input_file("dimension", 3);
   const std::string mesh_name                  = input_file("mesh_name","");
+  const std::string nodeset_IDs_string         = input_file("nodeset_IDs","");
+  const std::string sideset_IDs_string         = input_file("sideset_IDs","");
         
   // Create FE mesh.
   Mesh mesh(init.comm(), dim);
   ExodusII_IO mesh_reader(mesh);
   mesh_reader.read(mesh_name);
-  mesh.prepare_for_use();   
+  mesh.prepare_for_use();  
+  
+  // populate vectors for IDs
+  std::vector<int> nodeset_IDs;
+  std::vector<int> sideset_IDs; 
+  parse_ID_string(nodeset_IDs, nodeset_IDs_string);
+  parse_ID_string(sideset_IDs, sideset_IDs_string);
    
   // print out sideset IDs
   const BoundaryInfo& boundary_info = *mesh.boundary_info;
@@ -93,11 +117,11 @@ int main (int argc, char** argv)
   }
   std::cout << "\n";
   
-  std::cout << "nodeset IDs are... \n";
+  std::cout << "nodeset IDs and names are... \n";
   std::set<short int>::iterator nn;
   for(nn = boundary_info.get_node_boundary_ids().begin();  nn != boundary_info.get_node_boundary_ids().end(); ++nn)
   {
-      std::cout << *nn << std::endl;
+      std::cout << *nn << " " << boundary_info.get_nodeset_name(*nn) << std::endl;
   }
   std::cout << "\n";
   
@@ -108,152 +132,190 @@ int main (int argc, char** argv)
   LinearImplicitSystem& volume_system = equation_system.add_system<LinearImplicitSystem> ("ComputeVolume");
      
   // add variables to system, attach assemble function, and initialize system
-  volume_system.add_variable ("u", static_cast<Order>(1), LAGRANGE);
+  volume_system.add_variable ("whatever", static_cast<Order>(1), LAGRANGE);
   equation_system.init();
   
-  std::vector<dof_id_type> node_id_list;
-  std::vector<dof_id_type> sorted_node_id_list;
-  std::vector<Point> perimeter_list;
-  std::vector<Point> sorted_perimeter_list;
-  std::vector<boundary_id_type> bc_id_list;
-  boundary_info.build_node_list (node_id_list, bc_id_list);
+  std::vector<std::vector<dof_id_type> > node_id_list;
+  std::vector<std::vector<dof_id_type> > sorted_node_id_list;
+  std::vector<std::vector<Point> > perimeter_list;
+  std::vector<std::vector<Point> > sorted_perimeter_list;
+  std::vector<Point> centroids;
+  std::vector<std::vector<std::vector<Point> > >  X_web, dA_web;
   
-  // compute the centroid and populate the list of nodes
-  Point centroid;
-  for (int n = 0; n < node_id_list.size(); ++n)
-  {
-      Node* node = &mesh.node_ref(node_id_list[n]);
-      centroid += *node/static_cast<double>(node_id_list.size());
-      perimeter_list.push_back(*node);
-  }
+  std::vector<dof_id_type> nodes;
+  std::vector<boundary_id_type> bcs;
+  boundary_info.build_node_list (nodes, bcs);
+    
+  // resize everything
+  node_id_list.resize(nodeset_IDs.size());
+  sorted_node_id_list.resize(nodeset_IDs.size());
+  perimeter_list.resize(nodeset_IDs.size());
+  sorted_perimeter_list.resize(nodeset_IDs.size());
+  centroids.resize(nodeset_IDs.size());
+  X_web.resize(nodeset_IDs.size());
+  dA_web.resize(nodeset_IDs.size());
 
-  // make sure nodes are sorted with a particular orientation
-  Point temp_point;
-  dof_id_type temp_dof_id;
-  double max_dist = std::numeric_limits<double>::max();
-  sorted_perimeter_list.push_back(perimeter_list[0]);
-  sorted_node_id_list.push_back(node_id_list[0]);
-  for (int kk = 1; kk < perimeter_list.size(); ++kk)
+  // populate vectors
+  for (int ii = 0; ii < nodes.size(); ++ii)
   {
-      Point dist = perimeter_list[kk] - sorted_perimeter_list[0];
-      if(dist.norm() < max_dist)
+      for (int jj = 0; jj < nodeset_IDs.size(); ++jj)
       {
-          temp_point = perimeter_list[kk];
-          temp_dof_id = node_id_list[kk];
-          max_dist = dist.norm();
-      }
-  }
-  sorted_perimeter_list.push_back(temp_point);
-  sorted_node_id_list.push_back(temp_dof_id);
-  
-  max_dist = std::numeric_limits<double>::max();
-  for (int kk = 2; kk < perimeter_list.size(); ++kk)
-  {
-      for (int ll = 0; ll < perimeter_list.size(); ++ll)
-      {
-          if(perimeter_list[ll] != sorted_perimeter_list[kk-2] && perimeter_list[ll] != sorted_perimeter_list[kk-1])
+          if(nodeset_IDs[jj] == bcs[ii])
           {
-              Point dist = perimeter_list[ll] - sorted_perimeter_list[kk-1];
-              if(dist.norm() < max_dist)
-              {
-                  temp_point = perimeter_list[ll];
-                  temp_dof_id = node_id_list[ll];
-                  max_dist = dist.norm();
-              }
+              node_id_list[jj].push_back(nodes[ii]);
+              Node* node = &mesh.node_ref(nodes[ii]);
+              perimeter_list[jj].push_back(*node);
+              centroids[jj] += *node;
           }
       }
-      sorted_perimeter_list.push_back(temp_point);
-      sorted_node_id_list.push_back(temp_dof_id);
-      std::cout << "\n";
-      temp_point.print();
-      max_dist = std::numeric_limits<double>::max();
   }
-
+  
   // output to file to check
   std::ofstream stuff_stream;
   stuff_stream.open("test_output.dat");
   
-  // create web
-  const int num_perimeter_nodes = sorted_perimeter_list.size();
-  const int num_web_nodes = 5;
-    
-  std::vector<std::vector<Point> >  X_web, dA_web;
-  X_web.resize(num_perimeter_nodes);
-  dA_web.resize(num_perimeter_nodes);
-  for (int m = 0; m < num_perimeter_nodes; ++m)
-  {
-      X_web[m].resize(num_web_nodes);
-      dA_web[m].resize(num_web_nodes);
-  }
-   
+  // compute webs for each nodeset  
   double web_contribution = 0.0;
-  // here is Boyce's code from IBInstrumentPanel
-  for (int m = 0; m < num_perimeter_nodes; ++m)
+  for (int jj = 0; jj < nodeset_IDs.size(); ++jj) // loop over nodesets
   {
-      const Point X_perimeter0(sorted_perimeter_list[m]);
-      const Point dX0((centroid - X_perimeter0) / static_cast<double>(num_web_nodes));
-      
-      const Point X_perimeter1(sorted_perimeter_list[(m + 1) % num_perimeter_nodes]);
-      const Point dX1((centroid - X_perimeter1) / static_cast<double>(num_web_nodes));
-      
-       // Away from the center of the web, each web patch is a planar
-      // quadrilateral.  At the web centroid, the quadrilateral is degenerate,
-      // i.e., it is a triangle.
-      for (int n = 0; n < num_web_nodes; ++n)
+      // finish computing centroid
+      const Point centroid = centroids[jj]/static_cast<double>(node_id_list[jj].size());
+           
+      // make sure nodes are sorted with a particular orientation
+      Point temp_point;
+      dof_id_type temp_dof_id;
+      double max_dist = std::numeric_limits<double>::max();
+      sorted_perimeter_list[jj].push_back(perimeter_list[jj][0]);
+      sorted_node_id_list[jj].push_back(node_id_list[jj][0]);
+      for (int kk = 1; kk < perimeter_list[jj].size(); ++kk)
       {
-          // Compute the four vertices of the quadrilateral web patch.
-          //
-          // Note that here the vertices are placed in "standard" (i.e.,
-          // "counter-clockwise") orientation.
-          const Point X0(X_perimeter0 + static_cast<double>(n) * dX0);
-          const Point X1(X_perimeter1 + static_cast<double>(n) * dX1);
-          const Point X2(X_perimeter1 + static_cast<double>(n + 1) * dX1);
-          const Point X3(X_perimeter0 + static_cast<double>(n + 1) * dX0);
-          
-          // Compute the midpoints of the edges of the quadrilateral.
-          const Point X01(0.5 * (X0 + X1));
-          const Point X12(0.5 * (X1 + X2));
-          const Point X23(0.5 * (X2 + X3));
-          const Point X30(0.5 * (X3 + X0));
-          
-          // Construct a parametric representation of the lines connecting the
-          // midpoints of the edges.
-          const Point l0 = X01;
-          const Point d0 = X23 - X01;
-          
-          const Point l1 = X12;
-          const Point d1 = X30 - X12;
-          
-          // Compute the centroid as the intersection of the lines connecting
-          // the midpoints of the edges.
-          const double d0d0 = d0*d0;
-          const double d0d1 = d0*d1;
-          const double d1d1 = d1*d1;
-          const double d0l0 = d0*l0;
-          const double d0l1 = d0*l1;
-          const double d1l0 = d1*l0;
-          const double d1l1 = d1*l1;
-          const double t = (-d0l0 * d1d1 + d0l1 * d1d1 + d0d1 * d1l0 - d0d1 * d1l1) / (-d0d1 * d0d1 + d1d1 * d0d0);
-          const double s = (d1l0 * d0d0 - d0d1 * d0l0 + d0d1 * d0l1 - d1l1 * d0d0) / (-d0d1 * d0d1 + d1d1 * d0d0);
-          X_web[m][n] = 0.5 * (l0 + t * d0 + l1 + s * d1);
-          
-          // Compute the area-weighted normal to the quadrilateral web patch,
-          // i.e.,
-          //
-          //    dA = 0.5*((X2-X0) X (X3-X1))
-          //
-          // Note that by construction, the quadrilateral is guaranteed to lie
-          // within a plane.  Also, note that if X2 == X3, the following is
-          // simply the formula for the area-weighted normal to a triangle.
-          dA_web[m][n] = 0.5 * (X2 - X0).cross(X3 - X1);
-
-          // output web to make sure it looks reasonable
-          stuff_stream << X_web[m][n](0) << " " << X_web[m][n](1) << " " << X_web[m][n](2) << "\n" ;
-          
-          // compute surface integral
-          web_contribution += (1.0/3.0) * dA_web[m][n] * X_web[m][n];
+          Point dist = perimeter_list[jj][kk] - sorted_perimeter_list[jj][0];
+          if(dist.norm() < max_dist)
+          {
+              temp_point = perimeter_list[jj][kk];
+              temp_dof_id = node_id_list[jj][kk];
+              max_dist = dist.norm();
+          }
       }
+      sorted_perimeter_list[jj].push_back(temp_point);
+      sorted_node_id_list[jj].push_back(temp_dof_id);
+      
+      max_dist = std::numeric_limits<double>::max();
+      for (int kk = 2; kk < perimeter_list[jj].size(); ++kk)
+      {
+          for (int ll = 0; ll < perimeter_list[jj].size(); ++ll)
+          {
+              Point foo1 = centroid - perimeter_list[jj][ll];
+              Point foo2 = perimeter_list[jj][ll] - sorted_perimeter_list[jj][kk-1];
+              Point foo3 = centroid - sorted_perimeter_list[jj][kk-1];
+              Point foo4 = sorted_perimeter_list[jj][kk-1] - sorted_perimeter_list[jj][kk-2];
+              
+              Point cross1 = foo2.cross(foo1);
+              Point cross2 = foo4.cross(foo3);
+              
+              //if(perimeter_list[jj][ll] != sorted_perimeter_list[jj][kk-2] && perimeter_list[jj][ll] != sorted_perimeter_list[jj][kk-1])
+              if(perimeter_list[jj][ll] != sorted_perimeter_list[jj][kk-1] && cross1 * cross2 > 0)
+              {
+                  Point dist = perimeter_list[jj][ll] - sorted_perimeter_list[jj][kk-1];
+                  if(dist.norm() < max_dist)
+                  {
+                      temp_point = perimeter_list[jj][ll];
+                      temp_dof_id = node_id_list[jj][ll];
+                      max_dist = dist.norm();
+                  }
+              }
+          }
+          sorted_perimeter_list[jj].push_back(temp_point);
+          sorted_node_id_list[jj].push_back(temp_dof_id);
+          //std::cout << "\n";
+          //temp_point.print();
+          max_dist = std::numeric_limits<double>::max();
+      }
+      
+      
+      // create web
+      const int num_perimeter_nodes = sorted_perimeter_list[jj].size();
+      const int num_web_nodes = 2;
+      
+      X_web[jj].resize(num_perimeter_nodes);
+      dA_web[jj].resize(num_perimeter_nodes);
+      for (int m = 0; m < num_perimeter_nodes; ++m)
+      {
+          X_web[jj][m].resize(num_web_nodes);
+          dA_web[jj][m].resize(num_web_nodes);
+      }
+      
+      // here is Boyce's code from IBInstrumentPanel
+      for (int m = 0; m < num_perimeter_nodes; ++m)
+      {
+          const Point X_perimeter0(sorted_perimeter_list[jj][m]);
+          const Point dX0((centroid - X_perimeter0) / static_cast<double>(num_web_nodes));
+          
+          const Point X_perimeter1(sorted_perimeter_list[jj][(m + 1) % num_perimeter_nodes]);
+          const Point dX1((centroid - X_perimeter1) / static_cast<double>(num_web_nodes));
+          
+          // Away from the center of the web, each web patch is a planar
+          // quadrilateral.  At the web centroid, the quadrilateral is degenerate,
+          // i.e., it is a triangle.
+          for (int n = 0; n < num_web_nodes; ++n)
+          {
+              // Compute the four vertices of the quadrilateral web patch.
+              //
+              // Note that here the vertices are placed in "standard" (i.e.,
+              // "counter-clockwise") orientation.
+              const Point X0(X_perimeter0 + static_cast<double>(n) * dX0);
+              const Point X1(X_perimeter1 + static_cast<double>(n) * dX1);
+              const Point X2(X_perimeter1 + static_cast<double>(n + 1) * dX1);
+              const Point X3(X_perimeter0 + static_cast<double>(n + 1) * dX0);
+              
+              // Compute the midpoints of the edges of the quadrilateral.
+              const Point X01(0.5 * (X0 + X1));
+              const Point X12(0.5 * (X1 + X2));
+              const Point X23(0.5 * (X2 + X3));
+              const Point X30(0.5 * (X3 + X0));
+              
+              // Construct a parametric representation of the lines connecting the
+              // midpoints of the edges.
+              const Point l0 = X01;
+              const Point d0 = X23 - X01;
+              
+              const Point l1 = X12;
+              const Point d1 = X30 - X12;
+              
+              // Compute the centroid as the intersection of the lines connecting
+              // the midpoints of the edges.
+              const double d0d0 = d0*d0;
+              const double d0d1 = d0*d1;
+              const double d1d1 = d1*d1;
+              const double d0l0 = d0*l0;
+              const double d0l1 = d0*l1;
+              const double d1l0 = d1*l0;
+              const double d1l1 = d1*l1;
+              const double t = (-d0l0 * d1d1 + d0l1 * d1d1 + d0d1 * d1l0 - d0d1 * d1l1) / (-d0d1 * d0d1 + d1d1 * d0d0);
+              const double s = (d1l0 * d0d0 - d0d1 * d0l0 + d0d1 * d0l1 - d1l1 * d0d0) / (-d0d1 * d0d1 + d1d1 * d0d0);
+              X_web[jj][m][n] = 0.5 * (l0 + t * d0 + l1 + s * d1);
+              
+              // Compute the area-weighted normal to the quadrilateral web patch,
+              // i.e.,
+              //
+              //    dA = 0.5*((X2-X0) X (X3-X1))
+              //
+              // Note that by construction, the quadrilateral is guaranteed to lie
+              // within a plane.  Also, note that if X2 == X3, the following is
+              // simply the formula for the area-weighted normal to a triangle.
+              dA_web[jj][m][n] = 0.5 * (X2 - X0).cross(X3 - X1);
+              
+              // output web to make sure it looks reasonable
+              stuff_stream << X_web[jj][m][n](0) << " " << X_web[jj][m][n](1) << " " << X_web[jj][m][n](2) << "\n" ;
+              
+              // compute surface integral
+             // web_contribution += (1.0/3.0) * dA_web[jj][m][n] * X_web[jj][m][n];
+          }
+      }
+      
   }
+  
+  stuff_stream.close();
 
   // compute surface integral over rest of mesh interior
   FEType fe_type = volume_system.variable_type(0);
@@ -287,21 +349,19 @@ int main (int argc, char** argv)
           const std::vector<short int> bdry_ids = boundary_info.boundary_ids(elem, side);
           
           // ID 103 = mesh interior surface
-          if(find(bdry_ids.begin(), bdry_ids.end(), 103) != bdry_ids.end())
+          if(find_first_of(bdry_ids.begin(), bdry_ids.end(), sideset_IDs.begin(), sideset_IDs.end()) != bdry_ids.end())
           {
               for(int qp = 0; qp < qface_points.size(); ++qp)
               {
                   mesh_contribution += -(1.0/3.0) * qface_points[qp] * qface_normals[qp] * JxW_face[qp];
               }
           }
-      
       }
       
   }
   
-  std::cout << "\n total volume = " << mesh_contribution + web_contribution << "\n";  
+  std::cout << "\n\n TOTAL VOLUME = " << mesh_contribution + web_contribution << "\n\n";  
   
-  stuff_stream.close();
   
 #endif // #ifndef LIBMESH_ENABLE_AMR
 

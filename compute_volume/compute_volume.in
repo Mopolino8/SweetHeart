@@ -2,5 +2,17 @@
 dimension = 3 
 
 #  mesh filename
-mesh_name = cylinder_test_refined.e
+mesh_name = heart_with_fibers_v3.e
+#mesh_name = cylinder_test_coarse.e
 
+# for the cylinder
+#nodeset_IDs = 1
+#sideset_IDs = 103
+
+# for the left ventricle
+#nodeset_IDs = 3,4
+#sideset_IDs = 301
+
+# for the right ventricle
+nodeset_IDs = 1,2
+sideset_IDs = 1401
