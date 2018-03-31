@@ -59,27 +59,6 @@ is_physical_bdry(const Elem* elem,
     return at_physical_bdry;
 }
 
-// function to parse strings of integers
-void parse_ID_string(std::vector<int>& IDs, const std::string& IDs_string)
-{
-    std::string blah;
-    char foo;
-    for(int ii = 0; ii < IDs_string.size(); ++ii)
-    {
-        foo = IDs_string.at(ii);
-        if(foo != ',')
-        {
-            blah = blah + foo;
-        }
-        else
-        {
-            IDs.push_back(atoi(blah.c_str()));
-            blah.clear();
-        }
-    }
-    IDs.push_back(atoi(blah.c_str()));
- }
-
 
 // main function
 int main (int argc, char** argv)
@@ -96,23 +75,14 @@ int main (int argc, char** argv)
 
   //Read in parameters from the input file
   const unsigned int dim                       = input_file("dimension", 3);
-  const std::string elem_type                  = input_file("elem_type","TET4");
   const std::string mesh_name                  = input_file("mesh_name","");
-  const std::string zero_IDs_string            = input_file("zero_IDs","");
-  const std::string one_IDs_string             = input_file("one_IDs","");
         
-  // Create a simple FE mesh.
+  // Create FE mesh.
   Mesh mesh(init.comm(), dim);
   ExodusII_IO mesh_reader(mesh);
   mesh_reader.read(mesh_name);
   mesh.prepare_for_use();   
-  
-  // populate vectors for boundary IDs
-  std::vector<int> zero_IDs;
-  std::vector<int> one_IDs; 
-  parse_ID_string(zero_IDs, zero_IDs_string);
-  parse_ID_string(one_IDs, one_IDs_string);
-  
+   
   // print out sideset IDs
   const BoundaryInfo& boundary_info = *mesh.boundary_info;
   std::cout << "\n" << "sideset IDs and names are... \n";
@@ -141,7 +111,92 @@ int main (int argc, char** argv)
   // add variables to system, attach assemble function, and initialize system
   volume_system.add_variable ("u", static_cast<Order>(1), LAGRANGE);
   equation_system.init();
+  
+  std::vector<dof_id_type> node_id_list;
+  std::vector<Point> perimeter_list;
+  std::vector<Point> sorted_perimeter_list;
+  std::vector<boundary_id_type> bc_id_list;
+  boundary_info.build_node_list (node_id_list, bc_id_list);
+  
+  // compute the centroid and populate the list of nodes
+  Point centroid;
+  for (int n = 0; n < node_id_list.size(); ++n)
+  {
+      Node* node = &mesh.node_ref(node_id_list[n]);
+      centroid += *node/static_cast<double>(node_id_list.size());
+      perimeter_list.push_back(*node);
+  }
+    std::cout << "here \n";
+
+  // make sure nodes are sorted with a particular orientation
+  Point temp_point;
+  double max_dist = std::numeric_limits<double>::max();
+  sorted_perimeter_list.push_back(perimeter_list[0]);
+  for (int kk = 1; kk < perimeter_list.size(); ++kk)
+  {
+      Point dist = perimeter_list[kk] - sorted_perimeter_list[0];
+      if(dist.norm() < max_dist)
+      {
+          temp_point = perimeter_list[kk];
+          max_dist = dist.norm();
+      }
+  }
+  sorted_perimeter_list.push_back(temp_point);
+  
+  max_dist = std::numeric_limits<double>::max();
+  for (int kk = 2; kk < perimeter_list.size(); ++kk)
+  {
+      for (int ll = 0; ll < perimeter_list.size(); ++ll)
+      {
+          if(perimeter_list[ll] != sorted_perimeter_list[kk-2] && perimeter_list[ll] != sorted_perimeter_list[kk-1])
+          {
+              Point dist = perimeter_list[ll] - sorted_perimeter_list[kk-1];
+              if(dist.norm() < max_dist)
+              {
+                  temp_point = perimeter_list[ll];
+                  max_dist = dist.norm();
+              }
+          }
+      }
+      sorted_perimeter_list.push_back(temp_point);
+      max_dist = std::numeric_limits<double>::max();
+  }
+  
+  std::cout << "\n centroid = \n";
+  centroid.print();
+  std::cout << "\n \n";
+  
+  std::cout << "size perimeter_list = " << perimeter_list.size();
+  std::cout << "size sorted perimeter_list = " << sorted_perimeter_list.size();
+  
+  for (int ii = 0; ii < node_id_list.size(); ++ii)
+  {
+      std::cout << "\n";
+      std::cout << node_id_list[ii] << " ";
+      Node* node = &mesh.node_ref(node_id_list[ii]);
+      node->print();
+  }
+  
+  std::cout << "\n \n";
+  
+  for (int ii = 0; ii < sorted_perimeter_list.size(); ++ii)
+  {
+      sorted_perimeter_list[ii].print();
+      std::cout << "\n";
+  }
+  
+  // loop over node sets 
+  
+      // loop over nodes in mesh
+  //    for (MeshBase::node_iterator it = mesh.local_nodes_begin(); it != mesh.local_nodes_end(); ++it)
+  //    {
+  //        Node* n = *it;
+       
+             
+   //   }
     
+  
+  
 #endif // #ifndef LIBMESH_ENABLE_AMR
 
   return 0;

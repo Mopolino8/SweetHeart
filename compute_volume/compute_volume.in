@@ -1,13 +1,6 @@
 # spatial dimension
 dimension = 3 
 
-# element type
-elem_type = TET4
-
-# boundary IDs
-zero_IDs = 12602,12702
-one_IDs = 12600,12700
-
 #  mesh filename
-mesh_name = cylinder_test_coarse.e
+mesh_name = cylinder_test_refined.e
 
