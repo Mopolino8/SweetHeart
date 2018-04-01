@@ -15,6 +15,7 @@ compute_valve_fibers/run_*
 compute_valve_fibers/*.o
 compute_valve_fibers/nbproject/
 compute_valve_fibers/.*
+compute_valve_fibers/valve-fibers-run
 
 compute_volume/*~
 compute_volume/Makefile

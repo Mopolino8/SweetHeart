@@ -482,7 +482,7 @@ int main (int argc, char** argv)
 #else
   
   //Parse the input file
-  GetPot input_file("compute_fibers.in");
+  GetPot input_file(argv[1]);
 
   //Read in parameters from the input file
   Order p_order                                = static_cast<Order>(input_file("p_order", 1));
@@ -599,9 +599,9 @@ int main (int argc, char** argv)
   
 #ifdef LIBMESH_HAVE_EXODUS_API
   ExodusII_IO (mesh).write_discontinuous_exodusII("fibers_for_"+mesh_name, equation_system);
-  ExodusII_IO  poo(mesh);
-  poo.write("test.e");
-  poo.write_element_data(equation_system);
+  //ExodusII_IO  poo(mesh);
+  //poo.write("test.e");
+  //poo.write_element_data(equation_system);
 #endif
     
 #endif // #ifndef LIBMESH_ENABLE_AMR
