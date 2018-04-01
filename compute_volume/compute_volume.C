@@ -170,6 +170,54 @@ int main (int argc, char** argv)
       }
   }
   
+  // compute surface integral over rest of mesh interior
+  FEType fe_type = volume_system.variable_type(0);
+  Point centroid_mesh;
+  int count_qp = 0;
+  
+  UniquePtr<FEBase> fe_elem_face(FEBase::build(dim, fe_type));
+  QGauss qface(dim-1, fe_type.default_quadrature_order());
+  fe_elem_face->attach_quadrature_rule(&qface);
+ 
+  //  for surface integrals
+  const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
+  const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
+  const std::vector<Point> & qface_points = fe_elem_face->get_xyz();
+    
+  // loop over elements
+  MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+  
+  double mesh_contribution = 0.0;
+  for ( ; el != end_el; ++el)
+  {  
+      
+      const Elem * elem = *el;
+            
+      // looping over element sides
+      for (unsigned int side=0; side<elem->n_sides(); side++)
+      {
+          // Pointer to the element face
+          fe_elem_face->reinit(elem, side);
+          
+          // get sideset IDs
+          const std::vector<short int> bdry_ids = boundary_info.boundary_ids(elem, side);
+          
+          // ID 103 = mesh interior surface
+          if(find_first_of(bdry_ids.begin(), bdry_ids.end(), sideset_IDs.begin(), sideset_IDs.end()) != bdry_ids.end())
+          {
+              for(int qp = 0; qp < qface_points.size(); ++qp)
+              {
+                  mesh_contribution += -(1.0/3.0) * qface_points[qp] * qface_normals[qp] * JxW_face[qp];
+                  centroid_mesh += qface_points[qp];
+                  count_qp += 1;
+              }
+          }
+      }
+      
+  }
+  centroid_mesh = centroid_mesh/static_cast<double>(count_qp);
+    
   // output to file to check
   std::ofstream stuff_stream;
   stuff_stream.open("test_output.dat");
@@ -180,41 +228,26 @@ int main (int argc, char** argv)
   {
       // finish computing centroid
       const Point centroid = centroids[jj]/static_cast<double>(node_id_list[jj].size());
-           
-      // make sure nodes are sorted with a particular orientation
+      const Point centroid_diff = centroid_mesh - centroid;
+      
+      // make sure nodes are sorted with a counter clockwise orientation
       Point temp_point;
       dof_id_type temp_dof_id;
       double max_dist = std::numeric_limits<double>::max();
       sorted_perimeter_list[jj].push_back(perimeter_list[jj][0]);
       sorted_node_id_list[jj].push_back(node_id_list[jj][0]);
-      for (int kk = 1; kk < perimeter_list[jj].size(); ++kk)
-      {
-          Point dist = perimeter_list[jj][kk] - sorted_perimeter_list[jj][0];
-          if(dist.norm() < max_dist)
-          {
-              temp_point = perimeter_list[jj][kk];
-              temp_dof_id = node_id_list[jj][kk];
-              max_dist = dist.norm();
-          }
-      }
-      sorted_perimeter_list[jj].push_back(temp_point);
-      sorted_node_id_list[jj].push_back(temp_dof_id);
-      
       max_dist = std::numeric_limits<double>::max();
-      for (int kk = 2; kk < perimeter_list[jj].size(); ++kk)
+      for (int kk = 1; kk < perimeter_list[jj].size(); ++kk)
       {
           for (int ll = 0; ll < perimeter_list[jj].size(); ++ll)
           {
+              // here we find the closest node "to the right" of the previous
+              // node by taking some cross products.
               Point foo1 = centroid - perimeter_list[jj][ll];
               Point foo2 = perimeter_list[jj][ll] - sorted_perimeter_list[jj][kk-1];
-              Point foo3 = centroid - sorted_perimeter_list[jj][kk-1];
-              Point foo4 = sorted_perimeter_list[jj][kk-1] - sorted_perimeter_list[jj][kk-2];
+              Point cross = foo2.cross(foo1);
               
-              Point cross1 = foo2.cross(foo1);
-              Point cross2 = foo4.cross(foo3);
-              
-              //if(perimeter_list[jj][ll] != sorted_perimeter_list[jj][kk-2] && perimeter_list[jj][ll] != sorted_perimeter_list[jj][kk-1])
-              if(perimeter_list[jj][ll] != sorted_perimeter_list[jj][kk-1] && cross1 * cross2 > 0)
+              if(perimeter_list[jj][ll] != sorted_perimeter_list[jj][kk-1] && cross * centroid_diff < 0)
               {
                   Point dist = perimeter_list[jj][ll] - sorted_perimeter_list[jj][kk-1];
                   if(dist.norm() < max_dist)
@@ -227,15 +260,13 @@ int main (int argc, char** argv)
           }
           sorted_perimeter_list[jj].push_back(temp_point);
           sorted_node_id_list[jj].push_back(temp_dof_id);
-          //std::cout << "\n";
-          //temp_point.print();
           max_dist = std::numeric_limits<double>::max();
       }
       
       
       // create web
       const int num_perimeter_nodes = sorted_perimeter_list[jj].size();
-      const int num_web_nodes = 2;
+      const int num_web_nodes = 5;
       
       X_web[jj].resize(num_perimeter_nodes);
       dA_web[jj].resize(num_perimeter_nodes);
@@ -309,56 +340,13 @@ int main (int argc, char** argv)
               stuff_stream << X_web[jj][m][n](0) << " " << X_web[jj][m][n](1) << " " << X_web[jj][m][n](2) << "\n" ;
               
               // compute surface integral
-             // web_contribution += (1.0/3.0) * dA_web[jj][m][n] * X_web[jj][m][n];
+              web_contribution += (1.0/3.0) * dA_web[jj][m][n] * X_web[jj][m][n];
           }
       }
       
   }
   
   stuff_stream.close();
-
-  // compute surface integral over rest of mesh interior
-  FEType fe_type = volume_system.variable_type(0);
-  
-  UniquePtr<FEBase> fe_elem_face(FEBase::build(dim, fe_type));
-  QGauss qface(dim-1, fe_type.default_quadrature_order());
-  fe_elem_face->attach_quadrature_rule(&qface);
- 
-  //  for surface integrals
-  const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
-  const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
-  const std::vector<Point> & qface_points = fe_elem_face->get_xyz();
-    
-  // loop over elements
-  MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
-  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
-  
-  double mesh_contribution = 0.0;
-  for ( ; el != end_el; ++el)
-  {  
-      
-      const Elem * elem = *el;
-            
-      // looping over element sides
-      for (unsigned int side=0; side<elem->n_sides(); side++)
-      {
-          // Pointer to the element face
-          fe_elem_face->reinit(elem, side);
-          
-          // get sideset IDs
-          const std::vector<short int> bdry_ids = boundary_info.boundary_ids(elem, side);
-          
-          // ID 103 = mesh interior surface
-          if(find_first_of(bdry_ids.begin(), bdry_ids.end(), sideset_IDs.begin(), sideset_IDs.end()) != bdry_ids.end())
-          {
-              for(int qp = 0; qp < qface_points.size(); ++qp)
-              {
-                  mesh_contribution += -(1.0/3.0) * qface_points[qp] * qface_normals[qp] * JxW_face[qp];
-              }
-          }
-      }
-      
-  }
   
   std::cout << "\n\n TOTAL VOLUME = " << mesh_contribution + web_contribution << "\n\n";  
   
