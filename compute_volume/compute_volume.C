@@ -262,11 +262,10 @@ int main (int argc, char** argv)
           sorted_node_id_list[jj].push_back(temp_dof_id);
           max_dist = std::numeric_limits<double>::max();
       }
-      
-      
+            
       // create web
       const int num_perimeter_nodes = sorted_perimeter_list[jj].size();
-      const int num_web_nodes = 5;
+      const int num_web_nodes = 2;
       
       X_web[jj].resize(num_perimeter_nodes);
       dA_web[jj].resize(num_perimeter_nodes);
@@ -349,8 +348,7 @@ int main (int argc, char** argv)
   stuff_stream.close();
   
   std::cout << "\n\n TOTAL VOLUME = " << mesh_contribution + web_contribution << "\n\n";  
-  
-  
+    
 #endif // #ifndef LIBMESH_ENABLE_AMR
 
   return 0;
