@@ -8,17 +8,20 @@ p_order = 2
 continuous_galerkin = false
 
 # for the penalty terms
-jump0_penalty = 10
-jump1_penalty = 10
-beta0 = 0.5
+jump0_penalty = 20
+jump1_penalty = 0
+beta0 = 1.0
 beta1 = 1.0
+cg_penalty = 1.0e10
 
 # element type
 elem_type = TET10
 
 # boundary IDs
-zero_IDs = 12602,12702
-one_IDs = 12600,12700
+zero_IDs_1 = 8000,8100,8200
+one_IDs_1 = 8003,8103,8203
+zero_IDs_2 = 8001,8101,8201
+one_IDs_2 = 8002,8102,8202
 
 #  mesh filename
 mesh_name = idealized_aortic_valve_v3.e

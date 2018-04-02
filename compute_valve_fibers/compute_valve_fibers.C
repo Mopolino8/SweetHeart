@@ -95,18 +95,21 @@ void assemble_ipdg_poisson(EquationSystems & es,
     point_locator.build(TREE_ELEMENTS, mesh);
     if(point_locator.initialized()) { std::cout << "point locator initialized" << std::endl; } 
     const unsigned int dim = mesh.mesh_dimension();
-    LinearImplicitSystem& ellipticdg_system = es.get_system<LinearImplicitSystem>("EllipticDG");
-    const Real jump0_penalty = es.parameters.get<Real> ("jump0_penalty");
+    const int system_flag = es.parameters.get<int> ("system_flag");
+    std::cout << "system flag = " << system_flag << "\n";
+    LinearImplicitSystem& poisson_system = (system_flag == 1) ? es.get_system<LinearImplicitSystem>("poisson_1") : es.get_system<LinearImplicitSystem>("poisson_2");
+        const Real jump0_penalty = es.parameters.get<Real> ("jump0_penalty");
     const Real jump1_penalty = es.parameters.get<Real> ("jump1_penalty");
     const Real beta0 = es.parameters.get<Real> ("beta0");
     const Real beta1 = es.parameters.get<Real> ("beta1");
+    const Real cg_penalty = es.parameters.get<Real> ("cg_penalty");
     const bool continuous_galerkin = es.parameters.get<bool>("continuous_galerkin");
         
     // had to remove the 'const' qualifier for dof_map because I need info about periodic boundaries
-    DofMap& dof_map = ellipticdg_system.get_dof_map();
+    DofMap& dof_map = poisson_system.get_dof_map();
     PeriodicBoundaries* periodic_boundaries = dof_map.get_periodic_boundaries();
     
-    FEType fe_type = ellipticdg_system.variable_type(0);
+    FEType fe_type = poisson_system.variable_type(0);
     
     UniquePtr<FEBase> fe  (FEBase::build(dim, fe_type));
     UniquePtr<FEBase> fe_elem_face(FEBase::build(dim, fe_type));
@@ -234,9 +237,15 @@ void assemble_ipdg_poisson(EquationSystems & es,
                         {
                            if(dirichlet)
                            {
-                                // stability
-                                Ke(i,j) += JxW_face[qp] * jump0_penalty/h0_elem * phi_face[i][qp] * phi_face[j][qp];
-                                
+                               // stability
+                               if(!continuous_galerkin)
+                               {
+                                   Ke(i,j) += JxW_face[qp] * jump0_penalty/h0_elem * phi_face[i][qp] * phi_face[j][qp];
+                               }
+                               else
+                               {
+                                   Ke(i,j) += JxW_face[qp] * cg_penalty * phi_face[i][qp] * phi_face[j][qp];
+                               }
                                 // consistency
                                 if(!continuous_galerkin)
                                 {
@@ -251,7 +260,14 @@ void assemble_ipdg_poisson(EquationSystems & es,
                         if (dirichlet)
                         {
                             // stability
-                            rhs_e(i) += JxW_face[qp] * bc_value * jump0_penalty/h0_elem * phi_face[i][qp];
+                             if(!continuous_galerkin)
+                             {
+                                 rhs_e(i) += JxW_face[qp] * bc_value * jump0_penalty/h0_elem * phi_face[i][qp];
+                             }
+                             else
+                             {
+                                 rhs_e(i) += JxW_face[qp] * bc_value * cg_penalty * phi_face[i][qp];
+                             }
                             // consistency
                             if(!continuous_galerkin)
                             {
@@ -262,6 +278,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
                     }
                 }
             }
+            
             
             // we enter here if element side is either in the interior of the domain or 
             // on a periodic boundary.
@@ -454,20 +471,20 @@ void assemble_ipdg_poisson(EquationSystems & es,
                         }
                     }
                     
-                    ellipticdg_system.matrix->add_matrix(Kne, neighbor_dof_indices, dof_indices);
-                    ellipticdg_system.matrix->add_matrix(Ken, dof_indices, neighbor_dof_indices);
-                    ellipticdg_system.matrix->add_matrix(Kee, dof_indices);
-                    ellipticdg_system.matrix->add_matrix(Knn, neighbor_dof_indices);
+                    poisson_system.matrix->add_matrix(Kne, neighbor_dof_indices, dof_indices);
+                    poisson_system.matrix->add_matrix(Ken, dof_indices, neighbor_dof_indices);
+                    poisson_system.matrix->add_matrix(Kee, dof_indices);
+                    poisson_system.matrix->add_matrix(Knn, neighbor_dof_indices);
                 
                 }
             }
         }     
-        ellipticdg_system.matrix->add_matrix(Ke, dof_indices);
-        ellipticdg_system.rhs->add_vector(rhs_e,dof_indices);
+        poisson_system.matrix->add_matrix(Ke, dof_indices);
+        poisson_system.rhs->add_vector(rhs_e,dof_indices);
     }
-    
-    ellipticdg_system.matrix->close();
-    ellipticdg_system.rhs->close();
+
+    poisson_system.matrix->close();
+    poisson_system.rhs->close();
     
 }
 
@@ -488,53 +505,56 @@ int main (int argc, char** argv)
   Order p_order                                = static_cast<Order>(input_file("p_order", 1));
   const Real jump0_penalty                     = input_file("jump0_penalty", 10.);
   const Real jump1_penalty                     = input_file("jump1_penalty", 10.);
-  const Real beta0                             = input_file("beta0", 10.);
-  const Real beta1                             = input_file("beta1", 10.);
+  const Real beta0                             = input_file("beta0", 1.);
+  const Real beta1                             = input_file("beta1", 1.);
+  const Real cg_penalty                        = input_file("cg_penalty", 1e10);
   const unsigned int dim                       = input_file("dimension", 3);
-  const std::string elem_type                  = input_file("elem_type","TET4");
+  const std::string elem_type                  = input_file("elem_type","TET10");
   const std::string mesh_name                  = input_file("mesh_name","");
-  const std::string zero_IDs_string            = input_file("zero_IDs","");
-  const std::string one_IDs_string             = input_file("one_IDs","");
+  const std::string zero_IDs_string_1          = input_file("zero_IDs_1","");
+  const std::string one_IDs_string_1           = input_file("one_IDs_1","");
+  const std::string zero_IDs_string_2          = input_file("zero_IDs_2","");
+  const std::string one_IDs_string_2           = input_file("one_IDs_2","");
   const bool continuous_galerkin               = input_file("continuous_galerkin",false);
         
   // Create a simple FE mesh.
   Mesh mesh(init.comm(), dim);
   ExodusII_IO mesh_reader(mesh);
   mesh_reader.read(mesh_name);
+  //mesh.allow_renumbering(false);
+  //mesh.all_second_order();
   mesh.prepare_for_use();   
   
-  // populate vectors for boundary IDs
+  // vectors for boundary IDs
   std::vector<int> zero_IDs;
   std::vector<int> one_IDs; 
-  parse_ID_string(zero_IDs, zero_IDs_string);
-  parse_ID_string(one_IDs, one_IDs_string);
   
   // print out sideset IDs
   const BoundaryInfo& boundary_info = *mesh.boundary_info;
-  std::cout << "sideset IDs are... \n";
+  std::cout << "\n sideset IDs and names are are... \n";
   std::set<short int>::iterator ii;
   for(ii = boundary_info.get_side_boundary_ids().begin();  ii != boundary_info.get_side_boundary_ids().end(); ++ii)
   {
-      std::cout << *ii << std::endl;
+      std::cout << *ii <<" " << boundary_info.get_sideset_name(*ii) << std::endl;
   }
-  std::cout << "\n";
+  std::cout << "\n \n";
   
   // create an equation system object
   EquationSystems equation_system (mesh);
   
   // set parameters for the equation system and the solver
-  equation_system.parameters.set<std::vector<int> >("zero IDs") = zero_IDs;
-  equation_system.parameters.set<std::vector<int> >("one IDs") = one_IDs;
   equation_system.parameters.set<Real>("linear solver tolerance") = TOLERANCE * TOLERANCE;
-  equation_system.parameters.set<unsigned int>("linear solver maximum iterations") = 1000;  
+  equation_system.parameters.set<unsigned int>("linear solver maximum iterations") = 2000;  
   equation_system.parameters.set<Real>("jump0_penalty") = jump0_penalty;
-  equation_system.parameters.set<Real>("jump1_penalty") = jump0_penalty;
+  equation_system.parameters.set<Real>("jump1_penalty") = jump1_penalty;
   equation_system.parameters.set<Real>("beta0") = beta0;
   equation_system.parameters.set<Real>("beta1") = beta1;
+  equation_system.parameters.set<Real>("cg_penalty") = cg_penalty;
   equation_system.parameters.set<bool>("continuous_galerkin") = continuous_galerkin;
   
-  // create a system named ellipticdg
-  LinearImplicitSystem& ellipticdg_system = equation_system.add_system<LinearImplicitSystem> ("EllipticDG");
+  // create a systems
+  LinearImplicitSystem& poisson_system_1 = equation_system.add_system<LinearImplicitSystem> ("poisson_1");
+  LinearImplicitSystem& poisson_system_2 = equation_system.add_system<LinearImplicitSystem> ("poisson_2");
   
   // create fiber systems
   LinearImplicitSystem& fiber_sys_x = equation_system.add_system<LinearImplicitSystem> ("fiber_sys_x");
@@ -544,34 +564,63 @@ int main (int argc, char** argv)
   // add variables to system, attach assemble function, and initialize system
   if(continuous_galerkin)
   {
-      ellipticdg_system.add_variable ("u", static_cast<Order>(1), LAGRANGE);
+       poisson_system_1.add_variable ("poisson_1", p_order, LAGRANGE);
+       poisson_system_2.add_variable ("poisson_2", p_order, LAGRANGE);
   }
   else
   {
-      ellipticdg_system.add_variable ("u", p_order, MONOMIAL);
+      poisson_system_1.add_variable ("poisson_1", p_order, MONOMIAL);
+      poisson_system_2.add_variable ("poisson_2", p_order, MONOMIAL);
   }
+
   fiber_sys_x.add_variable ("fibersx", CONSTANT, MONOMIAL);
   fiber_sys_y.add_variable ("fibersy", CONSTANT, MONOMIAL); 
   fiber_sys_z.add_variable ("fibersz", CONSTANT, MONOMIAL);
-  ellipticdg_system.attach_assemble_function (assemble_ipdg_poisson);
-  equation_system.init();
+
+  poisson_system_1.attach_assemble_function (assemble_ipdg_poisson);
+  poisson_system_2.attach_assemble_function (assemble_ipdg_poisson);
   
-  // Solve the system
-  std::cout << "solving system....\n";
-  ellipticdg_system.solve();
+  // Solve the first system
+  std::cout << "solving first system....\n";
+  equation_system.parameters.set<int>("system_flag") = 1;
+  parse_ID_string(zero_IDs, zero_IDs_string_1);
+  parse_ID_string(one_IDs, one_IDs_string_1);
+  equation_system.parameters.set<std::vector<int> >("zero IDs") = zero_IDs;
+  equation_system.parameters.set<std::vector<int> >("one IDs") = one_IDs;
+  equation_system.init();
+  poisson_system_1.solve();
+  libMesh::out << "Linear solver converged at step: "
+          << poisson_system_1.n_linear_iterations()
+          << ", final residual: "
+          << poisson_system_1.final_linear_residual()
+          << std::endl;  
+  
+  std::cout << "solving second system....\n";
+  equation_system.parameters.set<int>("system_flag") = 2;
+  parse_ID_string(zero_IDs, zero_IDs_string_2);
+  parse_ID_string(one_IDs, one_IDs_string_2);
+  equation_system.parameters.set<std::vector<int> >("zero IDs") = zero_IDs;
+  equation_system.parameters.set<std::vector<int> >("one IDs") = one_IDs;
+  poisson_system_2.solve();
   
   libMesh::out << "Linear solver converged at step: "
-          << ellipticdg_system.n_linear_iterations()
+          << poisson_system_2.n_linear_iterations()
           << ", final residual: "
-          << ellipticdg_system.final_linear_residual()
-          << std::endl;   
+          << poisson_system_2.final_linear_residual()
+          << std::endl;  
   
   // build MeshFunction to compute gradient at element centroids
-  MeshFunction mesh_fcn(equation_system,
-                        *ellipticdg_system.current_local_solution,
-                        ellipticdg_system.get_dof_map(),
+  MeshFunction mesh_fcn_1(equation_system,
+                        *poisson_system_1.current_local_solution,
+                        poisson_system_1.get_dof_map(),
                         0);
-  mesh_fcn.init();
+  mesh_fcn_1.init();
+  
+  MeshFunction mesh_fcn_2(equation_system,
+                        *poisson_system_2.current_local_solution,
+                        poisson_system_2.get_dof_map(),
+                        0);
+  mesh_fcn_2.init();
   
   // loop over elements
   MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
@@ -584,16 +633,16 @@ int main (int argc, char** argv)
       component.resize(1);
       const Elem* elem = *el;
       fiber_dof_map.dof_indices(elem, fiber_dof_indices);
-      //Gradient grad;
-      /*for (int node = 0; node < elem->n_nodes(); ++node)
-      {
-          grad = grad + mesh_fcn.gradient(elem->point(node))/Real(elem->n_nodes());
-      }*/
-      Gradient grad = mesh_fcn.gradient(elem->centroid());
-      Gradient normalized_grad = grad.unit();
-      component(0) = normalized_grad(0); fiber_sys_x.solution->add_vector(component, fiber_dof_indices);
-      component(0) = normalized_grad(1); fiber_sys_y.solution->add_vector(component, fiber_dof_indices);
-      component(0) = normalized_grad(2); fiber_sys_z.solution->add_vector(component, fiber_dof_indices);
+     
+      Gradient grad_1 = mesh_fcn_1.gradient(elem->centroid());
+      Gradient normalized_grad_1 = grad_1.unit();
+      Gradient grad_2 = mesh_fcn_2.gradient(elem->centroid());
+      Gradient normalized_grad_2 = grad_2.unit();
+      Point cross = grad_1.cross(grad_2);
+      Point normalized_cross = cross.unit();
+      component(0) = normalized_cross(0); fiber_sys_x.solution->add_vector(component, fiber_dof_indices);
+      component(0) = normalized_cross(1); fiber_sys_y.solution->add_vector(component, fiber_dof_indices);
+      component(0) = normalized_cross(2); fiber_sys_z.solution->add_vector(component, fiber_dof_indices);
       
   }
   
