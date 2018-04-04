@@ -1,0 +1,28 @@
+# spatial dimension
+dimension = 3 
+
+# minimum approximation order
+p_order = 2 
+
+# whether or not to do continuous Galerkin
+continuous_galerkin = false
+
+# for the penalty terms
+jump0_penalty = 20
+jump1_penalty = 0
+beta0 = 1.0
+beta1 = 1.0
+cg_penalty = 1.0e10
+
+# element type
+elem_type = TET10
+
+# boundary IDs
+zero_IDs_1 = 28000,28100,28200
+one_IDs_1 = 28003,28103,28203
+zero_IDs_2 = 28001,28101,28201
+one_IDs_2 = 28002,28102,28202
+
+#  mesh filename
+mesh_name = idealized_pulmonary_valve_v5.e
+

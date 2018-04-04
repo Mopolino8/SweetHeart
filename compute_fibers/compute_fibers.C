@@ -33,6 +33,7 @@
 #include "libmesh/boundary_info.h"
 #include "libmesh/point_locator_base.h"
 #include "libmesh/point_locator_list.h"
+#include "libmesh/point_locator_tree.h"
 #include "libmesh/periodic_boundaries.h"
 #include "libmesh/periodic_boundary.h"
 #include "libmesh/petsc_vector.h"
@@ -91,7 +92,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
     
     const MeshBase & mesh = es.get_mesh();
     const BoundaryInfo& boundary_info = *mesh.boundary_info;
-    const PointLocatorList& point_locator(mesh);
+    const PointLocatorTree& point_locator(mesh);
     point_locator.build(TREE_ELEMENTS, mesh);
     if(point_locator.initialized()) { std::cout << "point locator initialized" << std::endl; } 
     const unsigned int dim = mesh.mesh_dimension();

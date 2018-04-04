@@ -37,6 +37,7 @@
 #include "libmesh/periodic_boundary.h"
 #include "libmesh/petsc_vector.h"
 #include "libmesh/mesh_function.h"
+#include "libmesh/face_tri3.h"
 
 #include "libmesh/exact_solution.h"
 
@@ -146,6 +147,11 @@ int main (int argc, char** argv)
   std::vector<boundary_id_type> bcs;
   boundary_info.build_node_list (nodes, bcs);
     
+  // test
+  std::vector<boundary_id_type> blah;
+  boundary_info.build_node_boundary_ids(blah);
+  print_vector(blah);
+  
   // resize everything
   node_id_list.resize(nodeset_IDs.size());
   sorted_node_id_list.resize(nodeset_IDs.size());
@@ -227,7 +233,8 @@ int main (int argc, char** argv)
   for (int jj = 0; jj < nodeset_IDs.size(); ++jj) // loop over nodesets
   {
       // finish computing centroid
-      const Point centroid = centroids[jj]/static_cast<double>(node_id_list[jj].size());
+      centroids[jj] /= static_cast<double>(node_id_list[jj].size());
+      const Point centroid = centroids[jj];
       const Point centroid_diff = centroid_mesh - centroid;
       
       // make sure nodes are sorted with a counter clockwise orientation
@@ -344,12 +351,36 @@ int main (int argc, char** argv)
       }
       
   }
-  
   stuff_stream.close();
+  
+  // try to build 2D spanning mesh.
+  Mesh web_mesh(init.comm());
+  web_mesh.set_spatial_dimension(dim);
+  web_mesh.set_mesh_dimension(dim-1);
+  web_mesh.reserve_nodes(sorted_perimeter_list[0].size() + 1);
+  web_mesh.reserve_elem(sorted_perimeter_list[0].size());
+  web_mesh.add_point(centroids[0], 0);
+  for(int jj = 0; jj < sorted_perimeter_list[0].size(); ++jj)
+  {
+      web_mesh.add_point(sorted_perimeter_list[0][jj], jj+1);  
+  }
+  for(int jj = 0; jj < sorted_perimeter_list[0].size(); ++jj)
+  {
+      Elem* elem = new Tri3;
+      elem->set_id(jj);
+      elem = web_mesh.add_elem(elem);
+      elem->set_node(0) = web_mesh.node_ptr(jj);
+      elem->set_node(1) = web_mesh.node_ptr(jj+1);
+      elem->set_node(2) = web_mesh.node_ptr(0);
+  }
+  web_mesh.prepare_for_use();
   
   std::cout << "\n\n TOTAL VOLUME = " << mesh_contribution + web_contribution << "\n\n";  
     
 #endif // #ifndef LIBMESH_ENABLE_AMR
 
+  ExodusII_IO  poo(web_mesh);
+  poo.write("web_mesh_test.e");
+  
   return 0;
 }
