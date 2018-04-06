@@ -25,3 +25,4 @@ compute_volume/*.o
 compute_volume/nbproject/
 compute_volume/.*
 compute_volume/*.dat
+compute_volume/main

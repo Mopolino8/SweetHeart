@@ -369,8 +369,9 @@ int main (int argc, char** argv)
       Elem* elem = new Tri3;
       elem->set_id(jj);
       elem = web_mesh.add_elem(elem);
-      elem->set_node(0) = web_mesh.node_ptr(jj);
-      elem->set_node(1) = web_mesh.node_ptr(jj+1);
+      elem->set_node(0) = web_mesh.node_ptr(jj+1);
+      if(jj < sorted_perimeter_list[0].size() - 1) elem->set_node(1) = web_mesh.node_ptr(jj+2);
+      else elem->set_node(1) = web_mesh.node_ptr(1);
       elem->set_node(2) = web_mesh.node_ptr(0);
   }
   web_mesh.prepare_for_use();
