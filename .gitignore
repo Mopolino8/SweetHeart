@@ -26,3 +26,15 @@ compute_volume/nbproject/
 compute_volume/.*
 compute_volume/*.dat
 compute_volume/main
+
+
+translating_web/*~
+translating_web/Makefile
+translating_web/*.e
+translating_web/run_*
+translating_web/*.o
+translating_web/nbproject/
+translating_web/.*
+translating_web/*.dat
+translating_web/main2d
+translating_web/main3d
