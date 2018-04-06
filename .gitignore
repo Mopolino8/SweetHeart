@@ -38,3 +38,6 @@ translating_web/.*
 translating_web/*.dat
 translating_web/main2d
 translating_web/main3d
+translating_web/viz_IB3d
+translating_web/*.log
+translating_web/*.d

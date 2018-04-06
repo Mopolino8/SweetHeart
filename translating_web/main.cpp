@@ -64,69 +64,6 @@
 // Set up application namespace declarations
 #include <ibamr/app_namespaces.h>
 
-// Elasticity model data.
-namespace ModelData
-{
-    // Problem parameters.
-    double mu_e;
-    
-    // surface pressure function parameters
-    double F_body;
-          
-    // Coordinate mapping function.                                                                                                   
-    void
-    coordinate_mapping_function(libMesh::Point& X, const libMesh::Point& s, void* /*ctx*/)
-    {
-        X(0) = s(0) + 1.5;
-        X(1) = s(1) + 2.8;
-#if (NDIM == 3)
-        X(2) = s(2) + 0.4;
-#endif
-        return;
-    } // coordinate_mapping_function
-    
-    // Stress tensor function.
-    void
-    PK1_stress_function(TensorValue<double>& PP,
-            const TensorValue<double>& FF,
-            const libMesh::Point& /*X*/,
-            const libMesh::Point& /*s*/,
-            Elem* const /*elem*/,
-            const std::vector<const std::vector<double>*>& /*var_data*/,
-            const std::vector<const std::vector<VectorValue<double> >*>& /*grad_var_data*/,
-            double /*time*/,
-            void* /*ctx*/)
-    {
-        const TensorValue<double> FF_inv_trans = tensor_inverse_transpose(FF, NDIM);
-        PP = mu_e * ( FF - FF_inv_trans );
-
-        return;
-    } // PK1_stress_function
-    
-    void body_force_function(VectorValue<double>& F,
-            const TensorValue<double>& /*FF*/,
-            const libMesh::Point& x,
-            const libMesh::Point& X,
-            Elem* const elem /*elem*/,
-            const vector<const vector<double>*>& var_data,
-            const vector<const vector<VectorValue<double> >*>& /*grad_var_data*/,
-            double /*time*/,
-            void* /*ctx*/)
-    {
-        F.zero();
-#if (NDIM == 2)
-        F(1) = -F_body;
-#endif
-#if (NDIM == 3)
-        F(2) = -F_body;
-#endif
-        
-        return;
-    }
-    
-}
-
-using namespace ModelData;
 
 // Function prototypes
 void output_data(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
@@ -189,64 +126,12 @@ int main(int argc, char** argv)
         const int timer_dump_interval = app_initializer->getTimerDumpInterval();
 
         // Create a simple FE mesh.                                                                                                                                     
-        Mesh mesh(init.comm(), NDIM);
-        const double dx = input_db->getDouble("DX");
-        const double ds = input_db->getDouble("MFAC") * dx;
-        string elem_type = input_db->getString("ELEM_TYPE");
-        const double R = 0.1;
-        if (NDIM == 2 && (elem_type == "TRI3" || elem_type == "TRI6"))
-        {
-#ifdef LIBMESH_HAVE_TRIANGLE
-            const int num_circum_nodes = ceil(2.0 * M_PI * R / ds);
-            for (int k = 0; k < num_circum_nodes; ++k)
-            {
-                const double theta = 2.0 * M_PI * static_cast<double>(k) / static_cast<double>(num_circum_nodes);
-                mesh.add_point(libMesh::Point(R * cos(theta), R * sin(theta)));
-            }
-            TriangleInterface triangle(mesh);
-            triangle.triangulation_type() = TriangleInterface::GENERATE_CONVEX_HULL;
-            triangle.elem_type() = Utility::string_to_enum<ElemType>(elem_type);
-            triangle.desired_area() = 1.5 * sqrt(3.0) / 4.0 * ds * ds;
-            triangle.insert_extra_points() = true;
-            triangle.smooth_after_generating() = true;
-            triangle.triangulate();
-#else
-            TBOX_ERROR("ERROR: libMesh appears to have been configured without support for Triangle,\n"
-                       << "       but Triangle is required for TRI3 or TRI6 elements.\n");
-#endif
-        }
-        else
-        {
-            // NOTE: number of segments along boundary is 4*2^r.                                                                                                        
-            const double num_circum_segments = 2.0 * M_PI * R / ds;
-            const int r = log2(0.25 * num_circum_segments);
-            MeshTools::Generation::build_sphere(mesh, R, r, Utility::string_to_enum<ElemType>(elem_type));
-        }
-
-        // Ensure nodes on the surface are on the analytic boundary.                                                                                                    
-        MeshBase::element_iterator el_end = mesh.elements_end();
-        for (MeshBase::element_iterator el = mesh.elements_begin(); el != el_end; ++el)
-        {
-            Elem* const elem = *el;
-            for (unsigned int side = 0; side < elem->n_sides(); ++side)
-            {
-                const bool at_mesh_bdry = !elem->neighbor(side);
-                if (!at_mesh_bdry) continue;
-                for (unsigned int k = 0; k < elem->n_nodes(); ++k)
-                {
-                    if (!elem->is_node_on_side(k, side)) continue;
-                    Node& n = *elem->get_node(k);
-                    n = R * n.unit();
-                }
-            }
-        }
+        Mesh mesh(init.comm(), NDIM-1);
+        mesh.read("web_mesh_test.e");
+        std::cout << "web mesh dim = " << mesh.get_info() << "\n";
         mesh.prepare_for_use();
 
-        // get boundary information and surface pressure info
-        mu_e = input_db->getDouble("mu");
-        F_body = input_db->getDouble("F_body");
-               
-        // Create major algorithm and data objects that comprise the
+             // Create major algorithm and data objects that comprise the
         // application.  These objects are configured from the input database
         // and, if this is a restarted run, from the restart database.
         Pointer<INSHierarchyIntegrator> navier_stokes_integrator;
@@ -298,13 +183,7 @@ int main(int argc, char** argv)
         // Configure the IBFE solver.
         ib_method_ops->initializeFEEquationSystems();
         FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager();
-        ib_method_ops->registerInitialCoordinateMappingFunction(coordinate_mapping_function);
-        ib_method_ops->registerPK1StressFunction(PK1_stress_function);
-        
-        // register a body force function
-        IBFEMethod::LagBodyForceFcnData body_fcn_data(body_force_function);
-        ib_method_ops->registerLagBodyForceFunction(body_fcn_data, 0);
-              
+  
         // setup libmesh things for eliminating pressure jumps
         if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
         {
@@ -389,36 +268,7 @@ int main(int argc, char** argv)
         // Print the input database contents to the log file.
         plog << "Input database:\n";
         input_db->printClassData(plog);
-        
-        // Setup data used to determine the accuracy of the computed solution.
-        const Pointer<hier::Variable<NDIM> > u_var = navier_stokes_integrator->getVelocityVariable();
-        const Pointer<VariableContext> u_ctx = navier_stokes_integrator->getCurrentContext();
-        
-        VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
-        const int u_idx = var_db->mapVariableAndContextToIndex(u_var, u_ctx);
-        const int u_cloned_idx = var_db->registerClonedPatchDataIndex(u_var, u_idx);
-
-        const Pointer<hier::Variable<NDIM> > p_var = navier_stokes_integrator->getPressureVariable();
-        const Pointer<VariableContext> p_ctx = navier_stokes_integrator->getCurrentContext();
-        
-        const int p_idx = var_db->mapVariableAndContextToIndex(p_var, p_ctx);
-        
-        // so we can see what Phi looks like, interpolated on the Cartesian grid
-        visit_data_writer->registerPlotQuantity("Eulerian Phi", "SCALAR", ib_method_ops->phi_current_idx);
-        const int phi_cloned_idx = var_db->registerClonedPatchDataIndex(ib_method_ops->phi_var, ib_method_ops->phi_current_idx);
-        
-        // make an index so we can look at the sum of the pressure-like variable P and stress normalization Phi
-        const int p_plus_phi_idx = var_db->registerClonedPatchDataIndex(ib_method_ops->phi_var, ib_method_ops->phi_current_idx);
-        visit_data_writer->registerPlotQuantity("P plus Phi", "SCALAR", p_plus_phi_idx);
-        
-        const int coarsest_ln = 0;
-        const int finest_ln = patch_hierarchy->getFinestLevelNumber();
-        for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
-        {
-            patch_hierarchy->getPatchLevel(ln)->allocatePatchData(u_cloned_idx);
-            patch_hierarchy->getPatchLevel(ln)->allocatePatchData(phi_cloned_idx);
-            patch_hierarchy->getPatchLevel(ln)->allocatePatchData(p_plus_phi_idx);
-        }
+     
 
         // Write out initial visualization data.
         int iteration_num = time_integrator->getIntegratorStep();
@@ -464,12 +314,6 @@ int main(int argc, char** argv)
             dt = time_integrator->getMaximumTimeStepSize();
             time_integrator->advanceHierarchy(dt);
             loop_time += dt;
-
-            // update Phi system solution vector if we are solving the heat equation
-            if((ibfe_db->getString("Phi_solver").compare("CG_HEAT")) == 0 && input_db->getBool("ELIMINATE_PRESSURE_JUMPS"))
-            {
-               ib_method_ops->evolveStressNormalization(loop_time - dt, loop_time);
-            } 
                       
             pout << "\n";
             pout << "At end       of timestep # " << iteration_num << "\n";
@@ -477,42 +321,7 @@ int main(int argc, char** argv)
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
             
-             
-            // get a representation of the stress normalization function Phi on the Cartesian grid.
-            System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
-            NumericVector<double>* X_vec = X_system.solution.get();
-            NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
-            X_vec->localize(*X_ghost_vec);
             
-            HierarchyMathOps hier_math_ops("HierarchyMathOps", patch_hierarchy);
-            hier_math_ops.setPatchHierarchy(patch_hierarchy);
-            hier_math_ops.resetLevels(coarsest_ln, finest_ln);
-            const double volume = hier_math_ops.getVolumeOfPhysicalDomain();
-            const int wgt_cc_idx = hier_math_ops.getCellWeightPatchDescriptorIndex();
-            const int wgt_sc_idx = hier_math_ops.getSideWeightPatchDescriptorIndex();
-            
-            if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
-            {
-                HierarchyCellDataOpsReal<NDIM, double> hier_cc_data_ops(patch_hierarchy, coarsest_ln, finest_ln);
-                System& Phi_system = equation_systems->get_system<System>(IBFEMethod::PHI_SYSTEM_NAME);
-                NumericVector<double>* Phi_vec = Phi_system.solution.get();
-                NumericVector<double>* Phi_ghost_vec = Phi_system.current_local_solution.get();
-                Phi_vec->localize(*Phi_ghost_vec);
-                const int phi_idx = ib_method_ops->phi_current_idx;
-                fe_data_manager->prolongData(phi_idx,
-                                             *Phi_ghost_vec,
-                                             *X_ghost_vec,
-                                             IBFEMethod::PHI_SYSTEM_NAME,
-                                             false,
-                                             false);
-            
-                const double phi_mean = (1.0 / volume) * hier_cc_data_ops.integral(phi_idx, wgt_cc_idx);
-          //      std::cout << "volume = " <<  volume << std::endl;
-          //      std::cout << "phi_mean = " << phi_mean << std::endl; 
-                hier_cc_data_ops.addScalar(phi_cloned_idx, phi_idx, -phi_mean);
-                hier_cc_data_ops.add(p_plus_phi_idx, phi_idx, p_idx);
-            }
-                
             // At specified intervals, write visualization and restart files,
             // print out timer data, and store hierarchy data for post
             // processing.
@@ -554,47 +363,6 @@ int main(int argc, char** argv)
                             loop_time,
                             postproc_data_dump_dirname);
             }
-            
-            
-            // Compute the volume of the structure.
-            double J_integral = 0.0;
-            DofMap& X_dof_map = X_system.get_dof_map();
-            std::vector<std::vector<unsigned int> > X_dof_indices(NDIM);
-            AutoPtr<FEBase> fe(FEBase::build(NDIM, X_dof_map.variable_type(0)));
-            AutoPtr<QBase> qrule = QBase::build(QGAUSS, NDIM, FIFTH);
-            fe->attach_quadrature_rule(qrule.get());
-            const std::vector<double>& JxW = fe->get_JxW();
-            const std::vector<std::vector<VectorValue<double> > >& dphi = fe->get_dphi();
-            TensorValue<double> FF;
-            boost::multi_array<double, 2> X_node;
-            const MeshBase::const_element_iterator el_begin = mesh.active_local_elements_begin();
-            const MeshBase::const_element_iterator el_end = mesh.active_local_elements_end();
-            for (MeshBase::const_element_iterator el_it = el_begin; el_it != el_end; ++el_it)
-            {
-                Elem* const elem = *el_it;
-                fe->reinit(elem);
-                for (unsigned int d = 0; d < NDIM; ++d)
-                {
-                    X_dof_map.dof_indices(elem, X_dof_indices[d], d);
-                }
-                const int n_qp = qrule->n_points();
-                get_values_for_interpolation(X_node, *X_ghost_vec, X_dof_indices);
-                for (int qp = 0; qp < n_qp; ++qp)
-                {
-                    jacobian(FF, qp, X_node, dphi);
-                    J_integral += abs(FF.det()) * JxW[qp];
-                }
-            }
-            J_integral = SAMRAI_MPI::sumReduction(J_integral);
-            if (SAMRAI_MPI::getRank() == 0)
-            {
-                volume_stream.precision(12);
-                volume_stream.setf(ios::fixed, ios::floatfield);
-                volume_stream << loop_time << " " << J_integral << endl;
-            }
-            
-            // write out volume to screen also
-            pout << "volume = " << J_integral << std::endl;
             
         }
             
