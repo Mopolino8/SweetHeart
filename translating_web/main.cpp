@@ -43,6 +43,7 @@
 
 // Headers for basic libMesh objects
 #include <libmesh/equation_systems.h>
+#include <libmesh/boundary_mesh.h>
 #include <libmesh/exodusII_io.h>
 #include <libmesh/mesh.h>
 #include <libmesh/mesh_generation.h>
@@ -126,12 +127,13 @@ int main(int argc, char** argv)
         const int timer_dump_interval = app_initializer->getTimerDumpInterval();
 
         // Create a simple FE mesh.                                                                                                                                     
-        Mesh mesh(init.comm(), NDIM-1);
-        mesh.read("web_mesh_test.e");
-        std::cout << "web mesh dim = " << mesh.get_info() << "\n";
+        Mesh mesh(init.comm(), NDIM);
+        ExodusII_IO mesh_reader(mesh);
+        mesh_reader.read("web_mesh2_test.e");
+        std::cout << "\n web mesh info = \n" << mesh.get_info() << "\n";
         mesh.prepare_for_use();
-
-             // Create major algorithm and data objects that comprise the
+                
+        // Create major algorithm and data objects that comprise the
         // application.  These objects are configured from the input database
         // and, if this is a restarted run, from the restart database.
         Pointer<INSHierarchyIntegrator> navier_stokes_integrator;
@@ -261,7 +263,7 @@ int main(int argc, char** argv)
         ib_method_ops->initializeFEData();
         if (ib_post_processor) ib_post_processor->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
-
+        
         // Deallocate initialization objects.
         app_initializer.setNull();
 
@@ -269,7 +271,6 @@ int main(int argc, char** argv)
         plog << "Input database:\n";
         input_db->printClassData(plog);
      
-
         // Write out initial visualization data.
         int iteration_num = time_integrator->getIntegratorStep();
         double loop_time = time_integrator->getIntegratorTime();
@@ -283,8 +284,8 @@ int main(int argc, char** argv)
             }
             if (uses_exodus)
             {
-                if (ib_post_processor) ib_post_processor->postProcessData(loop_time);
-                exodus_io->write_timestep(
+               //if (ib_post_processor) ib_post_processor->postProcessData(loop_time);
+               exodus_io->write_timestep(
                     exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
             }
         }
@@ -337,7 +338,7 @@ int main(int argc, char** argv)
                 }
                 if (uses_exodus)
                 {
-                    if (ib_post_processor) ib_post_processor->postProcessData(loop_time);
+                    //if (ib_post_processor) ib_post_processor->postProcessData(loop_time);
                     exodus_io->write_timestep(
                         exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
                 }

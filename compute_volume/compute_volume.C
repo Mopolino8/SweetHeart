@@ -38,6 +38,7 @@
 #include "libmesh/petsc_vector.h"
 #include "libmesh/mesh_function.h"
 #include "libmesh/face_tri3.h"
+#include "libmesh/face_tri3_subdivision.h"
 
 #include "libmesh/exact_solution.h"
 
@@ -353,6 +354,8 @@ int main (int argc, char** argv)
   }
   stuff_stream.close();
   
+  std::cout << "\n\n TOTAL VOLUME = " << mesh_contribution + web_contribution << "\n\n";  
+  
   // try to build 2D spanning mesh.
   Mesh web_mesh(init.comm());
   web_mesh.set_spatial_dimension(dim);
@@ -375,13 +378,35 @@ int main (int argc, char** argv)
       elem->set_node(2) = web_mesh.node_ptr(0);
   }
   web_mesh.prepare_for_use();
+      
+  // try to build another 2D spanning mesh.
+  Mesh web_mesh2(init.comm());
+  web_mesh2.set_spatial_dimension(dim);
+  web_mesh2.set_mesh_dimension(dim-1);
+  web_mesh2.reserve_nodes(sorted_perimeter_list[0].size());
+  web_mesh2.reserve_elem(sorted_perimeter_list[0].size()-2);
+  for(int jj = 0; jj < sorted_perimeter_list[0].size(); ++jj)
+  {
+      web_mesh2.add_point(sorted_perimeter_list[0][jj], jj);  
+  }
+  for(int jj = 0; jj < sorted_perimeter_list[0].size()-2; ++jj)
+  {
+      Elem* elem = new Tri3;
+      elem->set_id(jj);
+      elem = web_mesh2.add_elem(elem);
+      elem->set_node(0) = web_mesh2.node_ptr(0);
+      elem->set_node(1) = web_mesh2.node_ptr(jj+1);
+      elem->set_node(2) = web_mesh2.node_ptr(jj+2);
+  }
+  web_mesh2.prepare_for_use();
   
-  std::cout << "\n\n TOTAL VOLUME = " << mesh_contribution + web_contribution << "\n\n";  
-    
 #endif // #ifndef LIBMESH_ENABLE_AMR
 
   ExodusII_IO  poo(web_mesh);
   poo.write("web_mesh_test.e");
+  
+  ExodusII_IO  poo2(web_mesh2);
+  poo2.write("web_mesh2_test.e");
   
   return 0;
 }

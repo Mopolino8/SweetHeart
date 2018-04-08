@@ -41,3 +41,4 @@ translating_web/main3d
 translating_web/viz_IB3d
 translating_web/*.log
 translating_web/*.d
+translating_web/*.curve
