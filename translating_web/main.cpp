@@ -40,6 +40,7 @@
 #include <CartesianGridGeometry.h>
 #include <LoadBalancer.h>
 #include <StandardTagAndInitialize.h>
+#include "HierarchyDataOpsManager.h"
 
 // Headers for basic libMesh objects
 #include <libmesh/equation_systems.h>
@@ -191,29 +192,7 @@ int main(int argc, char** argv)
         {
             ib_method_ops->registerStressNormalizationPart();
         }
-        
-        // Set up post processor to recover computed stresses.
-        Pointer<IBFEPostProcessor> ib_post_processor =
-            new IBFECentroidPostProcessor("IBFEPostProcessor", fe_data_manager);
-        {
-            Pointer<hier::Variable<NDIM> > p_var = navier_stokes_integrator->getPressureVariable();
-            Pointer<VariableContext> p_current_ctx = navier_stokes_integrator->getCurrentContext();
-            HierarchyGhostCellInterpolation::InterpolationTransactionComponent p_ghostfill(
-                /*data_idx*/ -1,
-                "LINEAR_REFINE",
-                /*use_cf_bdry_interpolation*/ false,
-                "CONSERVATIVE_COARSEN",
-                "LINEAR");
-            FEDataManager::InterpSpec p_interp_spec("PIECEWISE_LINEAR",
-                                                    QGAUSS,
-                                                    FIFTH,
-                                                    /*use_adaptive_quadrature*/ false,
-                                                    /*point_density*/ 2.0,
-                                                    /*use_consistent_mass_matrix*/ true);
-            ib_post_processor->registerInterpolatedScalarEulerianVariable(
-                "p_f", LAGRANGE, FIRST, p_var, p_current_ctx, p_ghostfill, p_interp_spec);
-        }
-
+                
         // Create Eulerian boundary condition specification objects (when necessary).
         const IntVector<NDIM>& periodic_shift = grid_geometry->getPeriodicShift();
         vector<RobinBcCoefStrategy<NDIM>*> u_bc_coefs(NDIM);
@@ -261,9 +240,8 @@ int main(int argc, char** argv)
         // Initialize hierarchy configuration and data on all patches.
         EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
         ib_method_ops->initializeFEData();
-        if (ib_post_processor) ib_post_processor->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
-        
+             
         // Deallocate initialization objects.
         app_initializer.setNull();
 
@@ -284,7 +262,6 @@ int main(int argc, char** argv)
             }
             if (uses_exodus)
             {
-               //if (ib_post_processor) ib_post_processor->postProcessData(loop_time);
                exodus_io->write_timestep(
                     exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
             }
@@ -292,9 +269,41 @@ int main(int argc, char** argv)
         
         // Open streams to save volume of structure.
         ofstream volume_stream;
+        ofstream pressure_stream;
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.open("volume.curve", ios_base::out | ios_base::trunc);
+            pressure_stream.open("pressure.curve", ios_base::out | ios_base::trunc);
+        }
+        
+        // setting up some objects for computing mean pressure
+        VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
+        Pointer<hier::Variable<NDIM> > p_var = navier_stokes_integrator->getPressureVariable();
+        Pointer<VariableContext> p_current_ctx = navier_stokes_integrator->getCurrentContext();
+        const int p_current_idx = var_db->mapVariableAndContextToIndex(p_var, p_current_ctx);
+        FEDataManager::InterpSpec p_interp_spec("PIECEWISE_LINEAR",
+                                                QGAUSS,
+                                                FIFTH,
+                                                /*use_adaptive_quadrature*/ false,
+                                                /*point_density*/ 2.0,
+                                                /*use_consistent_mass_matrix*/ true);
+        libMesh::DenseVector<double> MeanData;
+        const double current_time = 0.0;
+        Pointer<SideVariable<NDIM, double> > u_copy_var = new SideVariable<NDIM, double>("u_copy");
+        Pointer<CellVariable<NDIM, double> > p_copy_var = new CellVariable<NDIM, double>("p_copy");
+        const IntVector<NDIM> ib_ghosts = ib_method_ops->getMinimumGhostCellWidth();
+        const IntVector<NDIM> no_ghosts = 0;
+        const int u_copy_idx =
+        var_db->registerVariableAndContext(u_copy_var, time_integrator->getScratchContext(), ib_ghosts);
+        const int p_copy_idx =
+        var_db->registerVariableAndContext(p_copy_var, time_integrator->getScratchContext(), ib_ghosts);
+        const int coarsest_ln = 0;
+        const int finest_ln = patch_hierarchy->getFinestLevelNumber();
+        for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
+        {
+            Pointer<PatchLevel<NDIM> > level = patch_hierarchy->getPatchLevel(ln);
+            level->allocatePatchData(u_copy_idx, current_time);
+            level->allocatePatchData(p_copy_idx, current_time);
         }
         
         // Main time step loop.
@@ -322,6 +331,39 @@ int main(int argc, char** argv)
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
             
+            // get mean pressure
+            HierarchyDataOpsManager<NDIM>* hier_data_ops_manager = HierarchyDataOpsManager<NDIM>::getManager();
+            Pointer<HierarchyDataOpsReal<NDIM, double> > hier_cc_data_ops = hier_data_ops_manager->getOperationsDouble(p_var, patch_hierarchy, true);
+            hier_cc_data_ops->copyData(p_copy_idx, p_current_idx, true);
+              
+            typedef HierarchyGhostCellInterpolation::InterpolationTransactionComponent InterpolationTransactionComponent;
+            std::vector<InterpolationTransactionComponent> transaction_comp(1);
+            transaction_comp[0] = InterpolationTransactionComponent(p_copy_idx,
+                                                                    "LINEAR_REFINE",
+                                                                    /*use_cf_bdry_interpolation*/ false,
+                                                                    "CONSERVATIVE_COARSEN",
+                                                                    "LINEAR");
+                                                                                           
+            Pointer<HierarchyGhostCellInterpolation> hier_bdry_fill = new HierarchyGhostCellInterpolation();
+            hier_bdry_fill->initializeOperatorState(transaction_comp, patch_hierarchy);
+            //hier_bdry_fill->setHomogeneousBc(false);
+            hier_bdry_fill->fillData(loop_time);
+                        
+            System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
+            NumericVector<double>* X_vec = X_system.solution.get();
+            NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
+            X_vec->localize(*X_ghost_vec);
+            fe_data_manager->readData(p_copy_idx, MeanData, *X_ghost_vec, p_interp_spec);
+            pressure_stream << loop_time - dt << " " << MeanData(0) << "\n";
+            HierarchyMathOps hier_math_ops("HierarchyMathOps", patch_hierarchy);
+            hier_math_ops.setPatchHierarchy(patch_hierarchy);
+            hier_math_ops.resetLevels(coarsest_ln, finest_ln);
+            for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
+            {
+                Pointer<PatchLevel<NDIM> > level = patch_hierarchy->getPatchLevel(ln);
+                if (!level->checkAllocated(p_copy_idx)) level->allocatePatchData(p_copy_idx);
+                if (!level->checkAllocated(u_copy_idx)) level->allocatePatchData(u_copy_idx);
+            }
             
             // At specified intervals, write visualization and restart files,
             // print out timer data, and store hierarchy data for post
@@ -338,7 +380,6 @@ int main(int argc, char** argv)
                 }
                 if (uses_exodus)
                 {
-                    //if (ib_post_processor) ib_post_processor->postProcessData(loop_time);
                     exodus_io->write_timestep(
                         exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
                 }
@@ -372,6 +413,7 @@ int main(int argc, char** argv)
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.close();
+            pressure_stream.close();
         }
 
         // Cleanup Eulerian boundary condition specification objects (when

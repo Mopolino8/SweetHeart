@@ -6,7 +6,7 @@ L = 10.0
 // grid spacing parameters
 MAX_LEVELS = 1                                 // maximum number of levels in locally refined grid
 REF_RATIO  = 2                                 // refinement ratio between levels
-N = 32                                         // actual    number of grid cells on coarsest grid level
+N = 64                                         // actual    number of grid cells on coarsest grid level
 NFINEST = (REF_RATIO^(MAX_LEVELS - 1))*N       // effective number of grid cells on finest   grid level
 DX0 = L/N                                      // mesh width on coarsest grid level
 DX  = L/NFINEST                                // mesh width on finest   grid level
@@ -222,7 +222,7 @@ Main {
 
 CartesianGeometry {
 domain_boxes = [ (0,0,0),(N - 1,N - 1,N - 1) ]
-x_lo = 40,40,40
+x_lo = 20,20,20
 x_up = 110,110,110
 periodic_dimension = 1,1,1
 }
