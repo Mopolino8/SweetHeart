@@ -292,7 +292,6 @@ int main(int argc, char** argv)
         Pointer<SideVariable<NDIM, double> > u_copy_var = new SideVariable<NDIM, double>("u_copy");
         Pointer<CellVariable<NDIM, double> > p_copy_var = new CellVariable<NDIM, double>("p_copy");
         const IntVector<NDIM> ib_ghosts = ib_method_ops->getMinimumGhostCellWidth();
-        const IntVector<NDIM> no_ghosts = 0;
         const int u_copy_idx =
         var_db->registerVariableAndContext(u_copy_var, time_integrator->getScratchContext(), ib_ghosts);
         const int p_copy_idx =
@@ -331,11 +330,14 @@ int main(int argc, char** argv)
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
             
-            // get mean pressure
+            // **********************************************
+            // get mean pressure on surface mesh
+            //***********************************************
             HierarchyDataOpsManager<NDIM>* hier_data_ops_manager = HierarchyDataOpsManager<NDIM>::getManager();
             Pointer<HierarchyDataOpsReal<NDIM, double> > hier_cc_data_ops = hier_data_ops_manager->getOperationsDouble(p_var, patch_hierarchy, true);
             hier_cc_data_ops->copyData(p_copy_idx, p_current_idx, true);
               
+            // fill ghost cells
             typedef HierarchyGhostCellInterpolation::InterpolationTransactionComponent InterpolationTransactionComponent;
             std::vector<InterpolationTransactionComponent> transaction_comp(1);
             transaction_comp[0] = InterpolationTransactionComponent(p_copy_idx,
@@ -346,7 +348,6 @@ int main(int argc, char** argv)
                                                                                            
             Pointer<HierarchyGhostCellInterpolation> hier_bdry_fill = new HierarchyGhostCellInterpolation();
             hier_bdry_fill->initializeOperatorState(transaction_comp, patch_hierarchy);
-            //hier_bdry_fill->setHomogeneousBc(false);
             hier_bdry_fill->fillData(loop_time);
                         
             System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
@@ -354,7 +355,7 @@ int main(int argc, char** argv)
             NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
             X_vec->localize(*X_ghost_vec);
             fe_data_manager->readData(p_copy_idx, MeanData, *X_ghost_vec, p_interp_spec);
-            pressure_stream << loop_time - dt << " " << MeanData(0) << "\n";
+            pressure_stream << loop_time << " " << MeanData(0) << "\n";
             HierarchyMathOps hier_math_ops("HierarchyMathOps", patch_hierarchy);
             hier_math_ops.setPatchHierarchy(patch_hierarchy);
             hier_math_ops.resetLevels(coarsest_ln, finest_ln);
@@ -364,6 +365,8 @@ int main(int argc, char** argv)
                 if (!level->checkAllocated(p_copy_idx)) level->allocatePatchData(p_copy_idx);
                 if (!level->checkAllocated(u_copy_idx)) level->allocatePatchData(u_copy_idx);
             }
+            
+            //************************************************
             
             // At specified intervals, write visualization and restart files,
             // print out timer data, and store hierarchy data for post
