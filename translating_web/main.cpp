@@ -50,6 +50,7 @@
 #include <libmesh/mesh_generation.h>
 #include <libmesh/periodic_boundary.h>
 #include <libmesh/boundary_info.h>
+#include "libmesh/face_tri3.h"
 
 // Headers for application-specific algorithm/data structure objects
 #include <boost/multi_array.hpp>
@@ -128,10 +129,35 @@ int main(int argc, char** argv)
         const int timer_dump_interval = app_initializer->getTimerDumpInterval();
 
         // Create a simple FE mesh.                                                                                                                                     
-        Mesh mesh(init.comm(), NDIM);
+        /*Mesh mesh(init.comm(), NDIM);
         ExodusII_IO mesh_reader(mesh);
         mesh_reader.read("web_mesh2_test.e");
         std::cout << "\n web mesh info = \n" << mesh.get_info() << "\n";
+        mesh.prepare_for_use();*/
+        
+        // build a test FE mesh
+        const int num_nodes = 20;
+        Mesh mesh(init.comm());
+        mesh.set_spatial_dimension(NDIM);
+        mesh.set_mesh_dimension(NDIM - 1);
+        mesh.reserve_nodes(num_nodes);
+        mesh.reserve_elem(num_nodes-2);
+        for(int jj = 0; jj < num_nodes; ++jj)
+        {
+            const double foo1 = 0.1 * sin(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
+            const double foo2 = 0.1 * cos(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
+            const libMesh::Point foo(foo1, foo2, 0.5);
+            mesh.add_point(foo, jj);  
+        }
+        for(int jj = 0; jj < num_nodes - 2; ++jj)
+        {
+            Elem* elem = new Tri3;
+            elem->set_id(jj);
+            elem = mesh.add_elem(elem);
+            elem->set_node(0) = mesh.node_ptr(0);
+            elem->set_node(1) = mesh.node_ptr(jj+1);
+            elem->set_node(2) = mesh.node_ptr(jj+2);
+        }
         mesh.prepare_for_use();
                 
         // Create major algorithm and data objects that comprise the
@@ -192,7 +218,15 @@ int main(int argc, char** argv)
         {
             ib_method_ops->registerStressNormalizationPart();
         }
-                
+        
+        // Create Eulerian initial condition specification objects.
+        if (input_db->keyExists("VelocityInitialConditions"))
+        {
+            Pointer<CartGridFunction> u_init = new muParserCartGridFunction(
+                    "u_init", app_initializer->getComponentDatabase("VelocityInitialConditions"), grid_geometry);
+            navier_stokes_integrator->registerVelocityInitialConditions(u_init);
+        }
+        
         // Create Eulerian boundary condition specification objects (when necessary).
         const IntVector<NDIM>& periodic_shift = grid_geometry->getPeriodicShift();
         vector<RobinBcCoefStrategy<NDIM>*> u_bc_coefs(NDIM);
@@ -292,7 +326,8 @@ int main(int argc, char** argv)
                                                 /*use_adaptive_quadrature*/ false,
                                                 /*point_density*/ 2.0,
                                                 /*use_consistent_mass_matrix*/ true);
-        libMesh::DenseVector<double> MeanPressureData;
+        double MeanPressureData = 0.0;
+        double FluxData = 0.0;
         libMesh::DenseVector<double> MeanVelocityData;
         const double current_time = 0.0;
         Pointer<SideVariable<NDIM, double> > u_copy_var = new SideVariable<NDIM, double>("u_copy");
@@ -374,9 +409,9 @@ int main(int argc, char** argv)
             NumericVector<double>* X_vec = X_system.solution.get();
             NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
             X_vec->localize(*X_ghost_vec);
-            fe_data_manager->readData(p_copy_idx, MeanPressureData, *X_ghost_vec, interp_spec);
-            fe_data_manager->readData(u_copy_idx, MeanVelocityData, *X_ghost_vec, interp_spec);
-            pressure_stream << loop_time << " " << MeanPressureData(0) << "\n";
+            fe_data_manager->readPressureData(p_copy_idx, MeanPressureData, *X_ghost_vec, interp_spec);
+            fe_data_manager->readVelocityData(u_copy_idx, FluxData, MeanVelocityData, *X_ghost_vec, interp_spec);
+            pressure_stream << loop_time << " " << MeanPressureData << "\n";
             velocity_stream << loop_time;
             for(int dd = 0; dd < NDIM; ++dd) velocity_stream << " " << MeanVelocityData(dd);
             velocity_stream << "\n";

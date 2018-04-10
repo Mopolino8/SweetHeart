@@ -1,7 +1,7 @@
 // physical parameters
 MU  = 0.04
 RHO = 1.0
-L = 10.0
+L = 1.0
 
 // grid spacing parameters
 MAX_LEVELS = 1                                 // maximum number of levels in locally refined grid
@@ -25,7 +25,7 @@ SOLVER_TYPE                = "STAGGERED"       // the fluid solver to use (STAGG
 CFL_MAX                    = 0.3               // maximum CFL number
 DT                         = 0.0001*DX           // maximum timestep size
 START_TIME                 = 0.0e0             // initial simulation time
-END_TIME                   = 5*DT                 // growth factor for timesteps
+END_TIME                   = 100*DT                 // growth factor for timesteps
 GROW_DT                    = 2.0e0             // growth factor for timesteps
 NUM_CYCLES                 = 1                 // number of cycles of fixed-point iteration
 CONVECTIVE_TS_TYPE         = "ADAMS_BASHFORTH" // convective time stepping type
@@ -116,6 +116,12 @@ gcoef_function_4 = "0.0"
 gcoef_function_5 = "0.0"
 		  }
 
+VelocityInitialConditions { 
+    function_0 = "0.0"  // u component 
+    function_1 = "0.0"  // v component 
+    function_2 = "100.0"  // w component 
+} 
+
 IBHierarchyIntegrator {
 start_time          = START_TIME
 end_time            = END_TIME
@@ -204,7 +210,7 @@ Main {
 
 // visualization dump parameters
    viz_writer                  = "VisIt","ExodusII"
-   viz_dump_interval           = 1
+   viz_dump_interval           = 10
    viz_dump_dirname            = "viz_IB3d"
    visit_number_procs_per_file = 1
 
@@ -222,8 +228,8 @@ Main {
 
 CartesianGeometry {
 domain_boxes = [ (0,0,0),(N - 1,N - 1,N - 1) ]
-x_lo = 20,20,20
-x_up = 110,110,110
+x_lo = 0,0,0
+x_up = L,L,L
 periodic_dimension = 1,1,1
 }
 
