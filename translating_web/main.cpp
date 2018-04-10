@@ -144,8 +144,8 @@ int main(int argc, char** argv)
         mesh.reserve_elem(num_nodes-2);
         for(int jj = 0; jj < num_nodes; ++jj)
         {
-            const double foo1 = 0.1 * sin(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
-            const double foo2 = 0.1 * cos(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
+            const double foo1 = 0.1 * cos(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
+            const double foo2 = 0.1 * sin(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
             const libMesh::Point foo(foo1, foo2, 0.5);
             mesh.add_point(foo, jj);  
         }
@@ -305,11 +305,13 @@ int main(int argc, char** argv)
         ofstream volume_stream;
         ofstream pressure_stream;
         ofstream velocity_stream;
+        ofstream flux_stream;
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.open("volume.curve", ios_base::out | ios_base::trunc);
             pressure_stream.open("pressure.dat", ios_base::out | ios_base::trunc);
             velocity_stream.open("velocity.dat", ios_base::out | ios_base::trunc);
+            flux_stream.open("flux.dat", ios_base::out | ios_base::trunc);
         }
         
         // setting up some objects for computing mean pressure
@@ -412,6 +414,7 @@ int main(int argc, char** argv)
             fe_data_manager->readPressureData(p_copy_idx, MeanPressureData, *X_ghost_vec, interp_spec);
             fe_data_manager->readVelocityData(u_copy_idx, FluxData, MeanVelocityData, *X_ghost_vec, interp_spec);
             pressure_stream << loop_time << " " << MeanPressureData << "\n";
+            flux_stream << loop_time << " " << FluxData << "\n";
             velocity_stream << loop_time;
             for(int dd = 0; dd < NDIM; ++dd) velocity_stream << " " << MeanVelocityData(dd);
             velocity_stream << "\n";
@@ -479,6 +482,7 @@ int main(int argc, char** argv)
             volume_stream.close();
             pressure_stream.close();
             velocity_stream.close();
+            flux_stream.close();
         }
 
         // Cleanup Eulerian boundary condition specification objects (when
