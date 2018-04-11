@@ -136,7 +136,7 @@ int main(int argc, char** argv)
         mesh.prepare_for_use();*/
         
         // build a test FE mesh
-        const int num_nodes = 20;
+        const int num_nodes = 500;
         const double radius = 0.1;
         Mesh mesh(init.comm());
         mesh.set_spatial_dimension(NDIM);
@@ -412,8 +412,12 @@ int main(int argc, char** argv)
             NumericVector<double>* X_vec = X_system.solution.get();
             NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
             X_vec->localize(*X_ghost_vec);
+            System& U_system = equation_systems->get_system<System>(IBFEMethod::VELOCITY_SYSTEM_NAME);
+            NumericVector<double>* U_vec = U_system.solution.get();
+            NumericVector<double>* U_ghost_vec = U_system.current_local_solution.get();
+            U_vec->localize(*U_ghost_vec);
             fe_data_manager->readPressureData(p_copy_idx, MeanPressureData, *X_ghost_vec, interp_spec);
-            fe_data_manager->readVelocityData(u_copy_idx, FluxData, MeanVelocityData, *X_ghost_vec, interp_spec);
+            fe_data_manager->readVelocityData(u_copy_idx, FluxData, MeanVelocityData, *X_ghost_vec, *U_ghost_vec, interp_spec);
             pressure_stream << loop_time << " " << MeanPressureData << "\n";
             flux_stream << loop_time << " " << FluxData << "\n";
             velocity_stream << loop_time;
