@@ -137,6 +137,7 @@ int main(int argc, char** argv)
         
         // build a test FE mesh
         const int num_nodes = 20;
+        const double radius = 0.1;
         Mesh mesh(init.comm());
         mesh.set_spatial_dimension(NDIM);
         mesh.set_mesh_dimension(NDIM - 1);
@@ -144,8 +145,8 @@ int main(int argc, char** argv)
         mesh.reserve_elem(num_nodes-2);
         for(int jj = 0; jj < num_nodes; ++jj)
         {
-            const double foo1 = 0.1 * cos(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
-            const double foo2 = 0.1 * sin(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
+            const double foo1 = radius * cos(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
+            const double foo2 = radius * sin(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
             const libMesh::Point foo(foo1, foo2, 0.5);
             mesh.add_point(foo, jj);  
         }
