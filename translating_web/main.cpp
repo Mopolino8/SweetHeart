@@ -136,7 +136,7 @@ int main(int argc, char** argv)
         mesh.prepare_for_use();*/
         
         // build a test FE mesh
-        const int num_nodes = 500;
+        const int num_nodes = 20;
         const double radius = 0.1;
         Mesh mesh(init.comm());
         mesh.set_spatial_dimension(NDIM);
