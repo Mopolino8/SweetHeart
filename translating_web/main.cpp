@@ -67,6 +67,9 @@
 // Set up application namespace declarations
 #include <ibamr/app_namespaces.h>
 
+// other things
+#include "IBFEInstrumentPanel.h"
+
 
 // Function prototypes
 void output_data(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
