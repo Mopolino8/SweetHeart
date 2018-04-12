@@ -60,40 +60,15 @@
 #include "ibamr/IBFEMethod.h"
 
 
-// initialize data
-void initializeTimeIndependentData(const IBAMR::IBFEMethod* ib_method_ops)
-{
-    
-}
-                                      
-void initializeTimeDependentData(const IBAMR::IBFEMethod* ib_method_ops,
-                                 const int timestep_num,
-                                 const double data_time)
-{
-    
-}
-
-// read instrument data
-void
-readInstrumentData(const int U_data_idx,
-                   const int P_data_idx,
-                   const SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
-                   const int timestep_num,
-                   const double data_time)
-{
-    
-}
-
-
-IBFEInstrumentPanel::IBFEInstrumentPanel(const std::string& object_name,
-                                         const int part,
-                                         SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db)
+IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db,
+                                         const int part)
       : d_num_meters(0),
         d_part(part),
         d_equation_systems(),
         d_num_perimeter_nodes(),
         d_X_centroid(),
         d_X_perimeter(),
+        d_meshes(),
         d_flow_values(),
         d_mean_pres_values(),
         d_point_pres_values(),
@@ -103,6 +78,35 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(const std::string& object_name,
     IBFEInstrumentPanel::getFromInput(input_db);
 }
 
+
+IBFEInstrumentPanel::~IBFEInstrumentPanel() 
+{
+    
+}
+
+// initialize data
+void IBFEInstrumentPanel::initializeTimeIndependentData(const IBAMR::IBFEMethod* ib_method_ops)
+{
+    const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
+}
+                                      
+void IBFEInstrumentPanel::initializeTimeDependentData(const IBAMR::IBFEMethod* ib_method_ops,
+                                 const int timestep_num,
+                                 const double data_time)
+{
+    
+}
+
+// read instrument data
+void
+IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
+                                        const int P_data_idx,
+                                        const SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
+                                        const int timestep_num,
+                                        const double data_time)
+{
+    
+}
 
 // get data from input file
 void
@@ -117,9 +121,5 @@ IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
 } // getFromInput
 
 
-IBFEInstrumentPanel::~IBFEInstrumentPanel() 
-{
-    
-}
 
 

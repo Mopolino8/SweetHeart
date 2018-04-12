@@ -16,15 +16,15 @@
 #include "libmesh/point.h"
 #include "libmesh/mesh.h"
 #include "ibamr/IBFEMethod.h"
+#include "ibtk/FEDataManager.h"
 
 class IBFEInstrumentPanel 
 {
 public:
     
     // constructor
-    IBFEInstrumentPanel(const std::string& object_name, 
-                        const int part,
-                        SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db);
+    IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db,
+                        int part);
         
     // destructor
     ~IBFEInstrumentPanel();
@@ -33,7 +33,8 @@ public:
     void getFromInput(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> db);
     
     // initialize data
-    void initializeTimeIndependentData(IBAMR::IBFEMethod* ib_method_ops);
+    void initializeTimeIndependentData(IBAMR::IBFEMethod* ib_method_ops,
+                                       IBTK::FEDataManager* fe_data_manager);
                                       
     void initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_ops,
                                      int timestep_num,
