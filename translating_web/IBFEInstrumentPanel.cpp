@@ -56,8 +56,11 @@
 #include "tbox/Utilities.h"
 
 #include "libmesh/equation_systems.h"
+#include "libmesh/boundary_info.h"
+#include "libmesh/mesh.h"
 
 #include "ibamr/IBFEMethod.h"
+#include "ibtk/FEDataManager.h"
 
 
 IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db,
@@ -65,10 +68,11 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
       : d_num_meters(0),
         d_part(part),
         d_equation_systems(),
-        d_num_perimeter_nodes(),
-        d_X_centroid(),
-        d_X_perimeter(),
-        d_meshes(),
+        d_nodes(),
+        d_num_nodes(),
+        d_node_dof_IDs(),
+        d_nodeset_IDs(),
+        d_meter_meshes(),
         d_flow_values(),
         d_mean_pres_values(),
         d_point_pres_values(),
@@ -85,14 +89,75 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
 }
 
 // initialize data
-void IBFEInstrumentPanel::initializeTimeIndependentData(const IBAMR::IBFEMethod* ib_method_ops)
+void IBFEInstrumentPanel::initializeTimeIndependentData(const IBAMR::IBFEMethod* ib_method_ops,
+                                                        const Parallel::Communicator& comm_in)
 {
+    // get relevant things for corresponding part
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
+    const EquationSystems* eq = fe_data_manager->getEquationSystems();
+    const Mesh& mesh = eq->get_mesh();
+    const BoundaryInfo& boundary_info = *mesh.boundary_info;
+    
+    std::vector<dof_id_type> nodes;
+    std::vector<boundary_id_type> bcs;
+    boundary_info.build_node_list (nodes, bcs);
+    
+    // resize members 
+    d_num_meters = d_nodeset_IDs.size();
+    d_node_dof_IDs.resize(d_num_meters);
+    d_nodes.resize(d_num_meters);
+    d_num_nodes.resize(d_num_meters);
+    
+    // populate information about the nodesets we have in the mesh
+    for (int ii = 0; ii < nodes.size(); ++ii)
+    {
+        for (int jj = 0; jj < d_nodeset_IDs.size(); ++jj)
+        {
+            if(d_nodeset_IDs[jj] == bcs[ii])
+            {
+                d_node_dof_IDs[jj].push_back(nodes[ii]);
+                Node* node = &mesh.node_ref(nodes[ii]);
+                d_nodes[jj].push_back(*node);
+            }
+        }
+    }
+    
+    // initialize meshes and number of nodes
+    for(int jj = 0; jj < d_num_meters; ++jj)
+    {
+        d_meter_meshes.push_back(new Mesh (comm_in, NDIM));
+        d_num_nodes[jj] = d_nodes[jj].size();
+    }
+    
+    // build the meshes
+    for (int ii = 0; ii < d_num_meters; ++ii)
+    {
+        d_meter_meshes[ii].set_spatial_dimension(NDIM);
+        d_meter_meshes[ii].set_mesh_dimension(NDIM-1);
+        d_meter_meshes[ii].reserve_nodes(d_num_nodes[ii]);
+        d_meter_meshes[ii].reserve_elem(d_num_nodes[ii]-2);
+        
+        for(int jj = 0; jj < d_num_nodes[ii]; ++jj)
+        { 
+            d_meter_meshes[ii].add_point(d_nodes[ii][jj], jj);  
+        }
+        
+        for(int jj = 0; jj < d_num_nodes[ii] - 2; ++jj)
+        {
+            Elem* elem = new Tri3;
+            elem->set_id(jj);
+            elem = d_meter_meshes[ii]mesh.add_elem(elem);
+            elem->set_node(0) = mesh.node_ptr(0);
+            elem->set_node(1) = mesh.node_ptr(jj+1);
+            elem->set_node(2) = mesh.node_ptr(jj+2);
+        }
+        d_meter_meshes[ii].prepare_for_use();
+    }
 }
                                       
 void IBFEInstrumentPanel::initializeTimeDependentData(const IBAMR::IBFEMethod* ib_method_ops,
-                                 const int timestep_num,
-                                 const double data_time)
+                                                      const int timestep_num,
+                                                      const double data_time)
 {
     
 }
@@ -116,7 +181,7 @@ IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
     TBOX_ASSERT(db);
 #endif
     if (db->keyExists("plot_directory_name")) d_plot_directory_name = db->getString("plot_directory_name");
-    
+    if (db->keyExists("nodeset_IDs")) d_nodeset_IDs = db->getDoubleArray("nodeset_IDs");
     return;
 } // getFromInput
 

@@ -53,12 +53,13 @@ private:
     unsigned int d_num_meters;
     unsigned int d_part;
     libMesh::EquationSystems* d_equation_systems;
-    std::vector<int> d_num_perimeter_nodes;
-    std::vector<libMesh::Point> d_X_centroid;
-    std::vector<std::vector<libMesh::Point > > d_X_perimeter;
-    std::vector<libMesh::Mesh*> d_meshes;
+    std::vector<int> d_num_nodes;
+    std::vector<int> d_node_dof_IDs;
+    std::vector<std::vector<libMesh::Point > > d_nodes;
+    std::vector<libMesh::Mesh*> d_meter_meshes;
     std::vector<double> d_flow_values, d_mean_pres_values, d_point_pres_values;
     std::string d_plot_directory_name;
+    std::vector<libMesh::dof_id_type> d_nodeset_IDs;
 
 };
 
