@@ -28,17 +28,17 @@ compute_volume/*.dat
 compute_volume/main
 
 
-translating_web/*~
-translating_web/Makefile
-translating_web/*.e
-translating_web/run_*
-translating_web/*.o
-translating_web/nbproject/
-translating_web/.*
-translating_web/*.dat
-translating_web/main2d
-translating_web/main3d
-translating_web/viz_IB3d
-translating_web/*.log
-translating_web/*.d
-translating_web/*.curve
+meters/*~
+meters/Makefile
+meters/*.e
+meters/run_*
+meters/*.o
+meters/nbproject/
+meters/.*
+meters/*.dat
+meters/main2d
+meters/main3d
+meters/viz_IB3d
+meters/*.log
+meters/*.d
+meters/*.curve
