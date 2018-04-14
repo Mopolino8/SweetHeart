@@ -89,7 +89,10 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
 
 IBFEInstrumentPanel::~IBFEInstrumentPanel() 
 {
-    
+    for (int ii = 0; ii < d_num_meters; ++ii)
+    {
+        delete d_meter_meshes[ii];
+    }
 }
 
 // initialize data
