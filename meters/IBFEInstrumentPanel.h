@@ -56,7 +56,6 @@ private:
        
     unsigned int d_num_meters;
     unsigned int d_part;
-    libMesh::EquationSystems* d_equation_systems;
     std::vector<int> d_num_nodes;
     std::vector<std::vector<libMesh::dof_id_type> > d_node_dof_IDs;
     std::vector<std::vector<libMesh::Point> > d_nodes;

@@ -70,7 +70,6 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
                                          const int part)
       : d_num_meters(0),
         d_part(part),
-        d_equation_systems(),
         d_nodes(),
         d_num_nodes(),
         d_node_dof_IDs(),
@@ -89,6 +88,7 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
 
 IBFEInstrumentPanel::~IBFEInstrumentPanel() 
 {
+    // delete vector of pointers to mesh objects
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
         delete d_meter_meshes[ii];

@@ -278,9 +278,9 @@ int main(int argc, char** argv)
         ib_method_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
              
-        IBFEInstrumentPanel instrument(input_db, 0);
+       /* IBFEInstrumentPanel instrument(input_db, 0);
         instrument.initializeTimeIndependentData(ib_method_ops, init.comm());
-        instrument.outputMeshes();
+        instrument.outputMeshes();*/
           
         // Deallocate initialization objects.
         app_initializer.setNull();
