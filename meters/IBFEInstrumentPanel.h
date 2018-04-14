@@ -34,7 +34,7 @@ public:
     
     // initialize data
     void initializeTimeIndependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                       IBTK::FEDataManager* fe_data_manager);
+                                       libMesh::Parallel::Communicator& comm_in);
                                       
     void initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_ops,
                                      int timestep_num,
@@ -48,18 +48,23 @@ public:
                        int timestep_num,
                        double data_time);
     
+    // write out meshes
+    void
+    outputMeshes();
+    
 private:
        
     unsigned int d_num_meters;
     unsigned int d_part;
     libMesh::EquationSystems* d_equation_systems;
     std::vector<int> d_num_nodes;
-    std::vector<int> d_node_dof_IDs;
-    std::vector<std::vector<libMesh::Point > > d_nodes;
+    std::vector<std::vector<libMesh::dof_id_type> > d_node_dof_IDs;
+    std::vector<std::vector<libMesh::Point> > d_nodes;
     std::vector<libMesh::Mesh*> d_meter_meshes;
+    std::vector<std::string> d_meter_mesh_names;
     std::vector<double> d_flow_values, d_mean_pres_values, d_point_pres_values;
     std::string d_plot_directory_name;
-    std::vector<libMesh::dof_id_type> d_nodeset_IDs;
+    SAMRAI::tbox::Array<int> d_nodeset_IDs;
 
 };
 

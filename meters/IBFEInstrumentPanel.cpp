@@ -58,10 +58,13 @@
 #include "libmesh/equation_systems.h"
 #include "libmesh/boundary_info.h"
 #include "libmesh/mesh.h"
+#include "libmesh/face_tri3.h"
+#include "libmesh/exodusII_io.h"
 
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
 
+#include <sstream>
 
 IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db,
                                          const int part)
@@ -73,6 +76,7 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_node_dof_IDs(),
         d_nodeset_IDs(),
         d_meter_meshes(),
+        d_meter_mesh_names(),
         d_flow_values(),
         d_mean_pres_values(),
         d_point_pres_values(),
@@ -89,14 +93,14 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
 }
 
 // initialize data
-void IBFEInstrumentPanel::initializeTimeIndependentData(const IBAMR::IBFEMethod* ib_method_ops,
-                                                        const Parallel::Communicator& comm_in)
+void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_method_ops,
+                                                        libMesh::Parallel::Communicator& comm_in)
 {
     // get relevant things for corresponding part
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
     const EquationSystems* eq = fe_data_manager->getEquationSystems();
-    const Mesh& mesh = eq->get_mesh();
-    const BoundaryInfo& boundary_info = *mesh.boundary_info;
+    const MeshBase* mesh = &eq->get_mesh();
+    const BoundaryInfo& boundary_info = *mesh->boundary_info;;
     
     std::vector<dof_id_type> nodes;
     std::vector<boundary_id_type> bcs;
@@ -116,7 +120,7 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(const IBAMR::IBFEMethod*
             if(d_nodeset_IDs[jj] == bcs[ii])
             {
                 d_node_dof_IDs[jj].push_back(nodes[ii]);
-                Node* node = &mesh.node_ref(nodes[ii]);
+                const Node* node = &mesh->node_ref(nodes[ii]);
                 d_nodes[jj].push_back(*node);
             }
         }
@@ -126,36 +130,46 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(const IBAMR::IBFEMethod*
     for(int jj = 0; jj < d_num_meters; ++jj)
     {
         d_meter_meshes.push_back(new Mesh (comm_in, NDIM));
+        std::ostringstream id; id << d_nodeset_IDs[jj];
+        d_meter_mesh_names.push_back("meter_mesh_"+id.str());
         d_num_nodes[jj] = d_nodes[jj].size();
     }
+    
+    std::ofstream stuff_stream;
+    stuff_stream.open("test_output.dat");
+    for (int dd = 0; dd < d_nodes[0].size(); ++dd)
+    {
+        stuff_stream << d_nodes[0][dd](0) << " " <<  d_nodes[0][dd](1) << " " <<  d_nodes[0][dd](2) << "\n";
+    }
+    stuff_stream.close();
     
     // build the meshes
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
-        d_meter_meshes[ii].set_spatial_dimension(NDIM);
-        d_meter_meshes[ii].set_mesh_dimension(NDIM-1);
-        d_meter_meshes[ii].reserve_nodes(d_num_nodes[ii]);
-        d_meter_meshes[ii].reserve_elem(d_num_nodes[ii]-2);
+        d_meter_meshes[ii]->set_spatial_dimension(NDIM);
+        d_meter_meshes[ii]->set_mesh_dimension(NDIM-1);
+        d_meter_meshes[ii]->reserve_nodes(d_num_nodes[ii]);
+        d_meter_meshes[ii]->reserve_elem(d_num_nodes[ii]-2);
         
         for(int jj = 0; jj < d_num_nodes[ii]; ++jj)
         { 
-            d_meter_meshes[ii].add_point(d_nodes[ii][jj], jj);  
+            d_meter_meshes[ii]->add_point(d_nodes[ii][jj], jj);  
         }
         
         for(int jj = 0; jj < d_num_nodes[ii] - 2; ++jj)
         {
             Elem* elem = new Tri3;
             elem->set_id(jj);
-            elem = d_meter_meshes[ii]mesh.add_elem(elem);
-            elem->set_node(0) = mesh.node_ptr(0);
-            elem->set_node(1) = mesh.node_ptr(jj+1);
-            elem->set_node(2) = mesh.node_ptr(jj+2);
+            elem = d_meter_meshes[ii]->add_elem(elem);
+            elem->set_node(0) = d_meter_meshes[ii]->node_ptr(0);
+            elem->set_node(1) = d_meter_meshes[ii]->node_ptr(jj+1);
+            elem->set_node(2) = d_meter_meshes[ii]->node_ptr(jj+2);
         }
-        d_meter_meshes[ii].prepare_for_use();
+        d_meter_meshes[ii]->prepare_for_use();
     }
 }
                                       
-void IBFEInstrumentPanel::initializeTimeDependentData(const IBAMR::IBFEMethod* ib_method_ops,
+void IBFEInstrumentPanel::initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_ops,
                                                       const int timestep_num,
                                                       const double data_time)
 {
@@ -173,6 +187,17 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     
 }
 
+ // write out meshes
+void
+IBFEInstrumentPanel::outputMeshes()
+{
+    for (int ii = 0; ii < d_num_meters; ++ii)
+    {
+        ExodusII_IO poo(*d_meter_meshes[ii]);
+        poo.write(d_meter_mesh_names[ii]+".e");       
+    }
+}
+
 // get data from input file
 void
 IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
@@ -181,7 +206,7 @@ IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
     TBOX_ASSERT(db);
 #endif
     if (db->keyExists("plot_directory_name")) d_plot_directory_name = db->getString("plot_directory_name");
-    if (db->keyExists("nodeset_IDs")) d_nodeset_IDs = db->getDoubleArray("nodeset_IDs");
+    if (db->keyExists("nodeset_IDs")) d_nodeset_IDs = db->getIntegerArray("nodeset_IDs");
     return;
 } // getFromInput
 

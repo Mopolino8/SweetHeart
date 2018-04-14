@@ -70,7 +70,6 @@
 // other things
 #include "IBFEInstrumentPanel.h"
 
-
 // Function prototypes
 void output_data(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                  Pointer<INSHierarchyIntegrator> navier_stokes_integrator,
@@ -132,14 +131,13 @@ int main(int argc, char** argv)
         const int timer_dump_interval = app_initializer->getTimerDumpInterval();
 
         // Create a simple FE mesh.                                                                                                                                     
-        /*Mesh mesh(init.comm(), NDIM);
+        Mesh mesh(init.comm(), NDIM);
         ExodusII_IO mesh_reader(mesh);
-        mesh_reader.read("web_mesh2_test.e");
-        std::cout << "\n web mesh info = \n" << mesh.get_info() << "\n";
-        mesh.prepare_for_use();*/
+        mesh_reader.read("heart_with_nodesets_v1.e");
+        mesh.prepare_for_use();
         
         // build a test FE mesh
-        const int num_nodes = 20;
+        /*const int num_nodes = 20;
         const double radius = 0.1;
         Mesh mesh(init.comm());
         mesh.set_spatial_dimension(NDIM);
@@ -162,7 +160,7 @@ int main(int argc, char** argv)
             elem->set_node(1) = mesh.node_ptr(jj+1);
             elem->set_node(2) = mesh.node_ptr(jj+2);
         }
-        mesh.prepare_for_use();
+        mesh.prepare_for_use();*/
                 
         // Create major algorithm and data objects that comprise the
         // application.  These objects are configured from the input database
@@ -280,6 +278,10 @@ int main(int argc, char** argv)
         ib_method_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
              
+        IBFEInstrumentPanel instrument(input_db, 0);
+        instrument.initializeTimeIndependentData(ib_method_ops, init.comm());
+        instrument.outputMeshes();
+          
         // Deallocate initialization objects.
         app_initializer.setNull();
 
