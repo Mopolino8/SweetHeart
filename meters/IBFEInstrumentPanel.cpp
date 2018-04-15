@@ -61,6 +61,7 @@
 #include "libmesh/face_tri3.h"
 #include "libmesh/exodusII_io.h"
 #include "libmesh/point.h"
+#include "libmesh/linear_implicit_system.h"
 
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
@@ -79,6 +80,7 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_nodeset_IDs(),
         d_sideset_IDs(),
         d_meter_meshes(),
+        d_meter_systems(),
         d_meter_mesh_names(),
         d_flow_values(),
         d_mean_pres_values(),
@@ -96,6 +98,7 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
         delete d_meter_meshes[ii];
+        delete d_meter_systems[ii];
     }
 }
 
@@ -191,13 +194,13 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
         d_num_nodes[jj] = d_nodes[jj].size();
     }
     
-    std::ofstream stuff_stream;
+    /*std::ofstream stuff_stream;
     stuff_stream.open("test_output.dat");
     for (int dd = 0; dd < d_nodes[0].size(); ++dd)
     {
         stuff_stream << d_nodes[0][dd](0) << " " <<  d_nodes[0][dd](1) << " " <<  d_nodes[0][dd](2) << "\n";
     }
-    stuff_stream.close();
+    stuff_stream.close();*/
     
     // build the meshes
     for (int ii = 0; ii < d_num_meters; ++ii)
@@ -223,9 +226,20 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
         }
         d_meter_meshes[ii]->prepare_for_use();
     } // loop over meters
-
-}
-
+    
+    // initialize meter mesh equation systems
+    for (int jj = 0; jj < d_num_meters; ++jj)
+    {
+        d_meter_systems.push_back(new EquationSystems(*d_meter_meshes[jj]));
+        // create a system named ellipticdg
+        LinearImplicitSystem& volume_system =
+                d_meter_systems[jj]->add_system<LinearImplicitSystem> ("ComputeVolume");
+            // add variables to system, attach assemble function, and initialize system
+        volume_system.add_variable ("u", static_cast<Order>(1), LAGRANGE);
+        d_meter_systems[jj]->init();
+    }
+    
+} // initializeTimeIndependentData
 
 void 
 IBFEInstrumentPanel::initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_ops,
@@ -233,7 +247,7 @@ IBFEInstrumentPanel::initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_op
                                                  const double data_time)
 {
     
-}
+} 
 
 // read instrument data
 void
@@ -244,9 +258,42 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                                         const double data_time)
 {
     
-}
+    // compute values of pressure at area at the quadrature points
+    const LinearImplicitSystem& volume_system =
+              d_meter_systems[0]->get_system<LinearImplicitSystem> ("ComputeVolume");
+    FEType fe_type = volume_system.variable_type(0);
+    int count_qp = 0.0;    
+    
+    UniquePtr<FEBase> fe_elem_face(FEBase::build(NDIM-1, fe_type));
+    QGauss qface(NDIM-1, fe_type.default_quadrature_order());
+    fe_elem_face->attach_quadrature_rule(&qface);
+    
+    //  for surface integrals
+    const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
+    const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
+    const std::vector<libMesh::Point> & qface_points = fe_elem_face->get_xyz();
+    
+    // loop over elements
+    MeshBase::const_element_iterator el = d_meter_meshes[0]->active_local_elements_begin();
+    const MeshBase::const_element_iterator end_el = d_meter_meshes[0]->active_local_elements_end();
+    
+    for ( ; el != end_el; ++el)
+    {  
+        const Elem * elem = *el;
+        fe_elem_face->reinit(elem);
+        
+        std::cout << "\n elem = " << elem->id() << "\n";
+        for(int ii = 0; ii < qface_points.size(); ++ii)
+        {
+            qface_points[ii].print();
+        } 
+        std::cout << "\n";
+          
+    }
+    
+} // readInstrumentData
 
- // write out meshes
+// write out meshes
 void
 IBFEInstrumentPanel::outputMeshes()
 {
@@ -258,7 +305,7 @@ IBFEInstrumentPanel::outputMeshes()
         //poo.write(output_name);       
         poo.write(d_meter_mesh_names[ii]+".e");       
     }
-}
+} // outputMeshes
 
 // get data from input file
 void

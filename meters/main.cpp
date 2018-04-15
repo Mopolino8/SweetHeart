@@ -133,7 +133,7 @@ int main(int argc, char** argv)
         // Create a simple FE mesh.                                                                                                                                     
         Mesh mesh(init.comm(), NDIM);
         ExodusII_IO mesh_reader(mesh);
-        mesh_reader.read("heart_with_fibers_v4.e");
+        mesh_reader.read("cylinder_test.e");
         mesh.prepare_for_use();
         
         // build a test FE mesh
@@ -439,6 +439,8 @@ int main(int argc, char** argv)
                 if (!level->checkAllocated(p_copy_idx)) level->allocatePatchData(p_copy_idx);
                 if (!level->checkAllocated(u_copy_idx)) level->allocatePatchData(u_copy_idx);
             }
+            
+            instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, iteration_num, loop_time);
             
             //************************************************
             

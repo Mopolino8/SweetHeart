@@ -15,6 +15,7 @@
 #include "tbox/Pointer.h"
 #include "libmesh/point.h"
 #include "libmesh/mesh.h"
+#include "libmesh/equation_systems.h"
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
 
@@ -59,6 +60,7 @@ private:
     std::vector<int> d_num_nodes;
     std::vector<std::vector<libMesh::dof_id_type> > d_node_dof_IDs;
     std::vector<std::vector<libMesh::Point> > d_nodes;
+    std::vector<libMesh::EquationSystems*> d_meter_systems;
     std::vector<libMesh::Mesh*> d_meter_meshes;
     std::vector<std::string> d_meter_mesh_names;
     std::vector<double> d_flow_values, d_mean_pres_values, d_point_pres_values;
