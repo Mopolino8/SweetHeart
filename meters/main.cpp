@@ -133,7 +133,7 @@ int main(int argc, char** argv)
         // Create a simple FE mesh.                                                                                                                                     
         Mesh mesh(init.comm(), NDIM);
         ExodusII_IO mesh_reader(mesh);
-        mesh_reader.read("cylinder_test.e");
+        mesh_reader.read("heart_with_fibers_v4.e");
         mesh.prepare_for_use();
         
         // build a test FE mesh

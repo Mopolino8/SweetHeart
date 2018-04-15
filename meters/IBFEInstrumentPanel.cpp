@@ -101,7 +101,7 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
 
 // initialize data
 void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_method_ops,
-        libMesh::Parallel::Communicator& comm_in)
+                                                        libMesh::Parallel::Communicator& comm_in)
 {
     // get relevant things for corresponding part
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
@@ -113,7 +113,7 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     std::vector<boundary_id_type> bcs;
     std::vector<std::vector<dof_id_type> > temp_node_dof_IDs;
     std::vector<std::vector<libMesh::Point> > temp_nodes;
-    const libMesh::Point direction_vector(0.0,0.0,1.0);
+    std::vector<libMesh::Point > direction_vector;
     std::vector<libMesh::Point> meter_centroids;
     boundary_info.build_node_list (nodes, bcs);
     
@@ -125,6 +125,7 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     temp_node_dof_IDs.resize(d_num_meters);
     temp_nodes.resize(d_num_meters);
     meter_centroids.resize(d_num_meters);
+    direction_vector.resize(d_num_meters);
     
     // populate temp vectors
     for (int ii = 0; ii < nodes.size(); ++ii)
@@ -141,14 +142,28 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
         }
     }
     
+    // compute an "approximate" normal vector to each of the meter meshes.
+    // this vector is used for making the mesh have some orientation.
+    for(int jj = 0; jj < d_num_meters; jj++)
+    {
+        const libMesh::Point foo1 = temp_nodes[jj][1] - temp_nodes[jj][0];
+        libMesh::Point foo3(0.0,0.0,0.0);
+        for (int ii = 2; ii < temp_nodes[jj].size(); ++ii)
+        {
+            const libMesh::Point foo2 = temp_nodes[jj][ii] - temp_nodes[jj][0];
+            foo3 += (foo1.cross(foo2)).unit();
+        }
+        direction_vector[jj] = foo3.unit(); 
+    }
+    
     // loop over meters and sort the nodes
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
         // finish computing centroid
         meter_centroids[jj] /= static_cast<double>(temp_node_dof_IDs[jj].size());
         const libMesh::Point centroid = meter_centroids[jj];
-        const libMesh::Point centroid_diff = direction_vector - centroid;
-        
+        const libMesh::Point centroid_diff = (direction_vector[jj] - centroid.unit()).unit();
+               
         // make sure nodes are sorted with a counter clockwise orientation
         libMesh::Point temp_point;
         dof_id_type temp_dof_id;
@@ -164,7 +179,7 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
                 // node by taking some cross products.
                 libMesh::Point foo1 = centroid - temp_nodes[jj][ll];
                 libMesh::Point foo2 = temp_nodes[jj][ll] - d_nodes[jj][kk-1];
-                libMesh::Point cross = foo2.cross(foo1);
+                libMesh::Point cross = (foo2.cross(foo1)).unit();
                 
                 if(temp_nodes[jj][ll] != d_nodes[jj][kk-1] && cross * centroid_diff < 0)
                 {
