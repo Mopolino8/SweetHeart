@@ -146,21 +146,26 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     // this vector is used for making the mesh have some orientation.
     for(int jj = 0; jj < d_num_meters; jj++)
     {
-        const libMesh::Point foo1 = temp_nodes[jj][1] - temp_nodes[jj][0];
-        libMesh::Point foo3(0.0,0.0,0.0);
-        for (int ii = 2; ii < temp_nodes[jj].size(); ++ii)
+        double min_cosine_angle = std::numeric_limits<double>::max();
+        // finish computing centroid
+        meter_centroids[jj] /= static_cast<double>(temp_node_dof_IDs[jj].size());
+        const libMesh::Point foo1 = (meter_centroids[jj] - temp_nodes[jj][0]).unit();
+        for (int ii = 1; ii < temp_nodes[jj].size(); ++ii)
         {
-            const libMesh::Point foo2 = temp_nodes[jj][ii] - temp_nodes[jj][0];
-            foo3 += (foo1.cross(foo2)).unit();
+            const libMesh::Point foo2 = (meter_centroids[jj] - temp_nodes[jj][ii]).unit();
+            double cosine_angle = abs(foo1 * foo2);
+            if( cosine_angle < min_cosine_angle )
+            {
+                min_cosine_angle = cosine_angle;
+                direction_vector[jj] = (foo1.cross(foo2)).unit(); 
+            }
         }
-        direction_vector[jj] = foo3.unit(); 
+        min_cosine_angle = std::numeric_limits<double>::max();
     }
     
     // loop over meters and sort the nodes
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
-        // finish computing centroid
-        meter_centroids[jj] /= static_cast<double>(temp_node_dof_IDs[jj].size());
         const libMesh::Point centroid = meter_centroids[jj];
         const libMesh::Point centroid_diff = (direction_vector[jj] - centroid.unit()).unit();
                
@@ -177,14 +182,21 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
             {
                 // here we find the closest node "to the right" of the previous
                 // node by taking some cross products.
-                libMesh::Point foo1 = centroid - temp_nodes[jj][ll];
-                libMesh::Point foo2 = temp_nodes[jj][ll] - d_nodes[jj][kk-1];
+                libMesh::Point foo1 = (centroid - temp_nodes[jj][ll]).unit();
+                libMesh::Point foo2 = (temp_nodes[jj][ll] - d_nodes[jj][kk-1]).unit();
                 libMesh::Point cross = (foo2.cross(foo1)).unit();
-                
-                if(temp_nodes[jj][ll] != d_nodes[jj][kk-1] && cross * centroid_diff < 0)
+                libMesh::Point dist = temp_nodes[jj][ll] - d_nodes[jj][kk-1];
+
+                //if( (cross * centroid_diff < 0) && (dist.norm() < max_dist) )
+                if( dist.norm() < max_dist ) 
                 {
-                    libMesh::Point dist = temp_nodes[jj][ll] - d_nodes[jj][kk-1];
-                    if(dist.norm() < max_dist)
+                    // make sure we haven't already added this node
+                    bool added = false;
+                    for(int ii = 1; ii < kk+1; ++ii)
+                    {
+                        if (temp_nodes[jj][ll] == d_nodes[jj][ii-1]) added = true;
+                    }
+                    if(!added)
                     {
                         temp_point = temp_nodes[jj][ll];
                         temp_dof_id = temp_node_dof_IDs[jj][ll];
@@ -198,6 +210,9 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
         }
     } // loop over meters
         
+    std::cout << "d_nodes size = " << d_nodes[0].size() << "\n";
+    std::cout << "temp_nodes size = " << temp_nodes[0].size() << "\n";
+    
     // initialize meshes and number of nodes
     for(int jj = 0; jj < d_num_meters; ++jj)
         {
@@ -209,9 +224,9 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     
     std::ofstream stuff_stream;
     stuff_stream.open("test_output.dat");
-    for (int dd = 0; dd < temp_nodes[0].size(); ++dd)
+    for (int dd = 0; dd < d_nodes[0].size(); ++dd)
     {
-        stuff_stream << temp_nodes[0][dd](0) << " " <<  temp_nodes[0][dd](1) << " " <<  temp_nodes[0][dd](2) << "\n";
+        stuff_stream << d_nodes[0][dd](0) << " " <<  d_nodes[0][dd](1) << " " <<  d_nodes[0][dd](2) << "\n";
     }
     stuff_stream.close();
     
