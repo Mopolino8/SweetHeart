@@ -16,7 +16,7 @@ PK1_DEV_QUAD_ORDER = "THIRD"
 PK1_DIL_QUAD_ORDER = "THIRD"
 
 // list of nodeset IDs and plot directory
-nodeset_IDs = 1
+nodeset_IDs = 4
 plot_directory_name = "viz_inst3d"        
         
 // solver parameters
