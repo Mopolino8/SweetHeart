@@ -75,10 +75,11 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
 :       d_num_meters(0),
         d_part(part),
         d_nodes(),
-        d_num_nodes(),
         d_node_dof_IDs(),
+        d_num_nodes(),
+        d_U_dof_idx(),        
+        d_dX_dof_idx(),
         d_nodeset_IDs(),
-        d_sideset_IDs(),
         d_meter_meshes(),
         d_meter_systems(),
         d_meter_mesh_names(),
@@ -112,6 +113,13 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     const MeshBase* mesh = &equation_systems->get_mesh();
     const BoundaryInfo& boundary_info = *mesh->boundary_info;
     
+    // get equation systems from the mesh we will need.
+    const System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+    const unsigned int dX_sys_num = dX_system.number();
+    const System& U_system = equation_systems->get_system(IBFEMethod::VELOCITY_SYSTEM_NAME);
+    const unsigned int U_sys_num = U_system.number();
+    
+    // some local variables
     std::vector<dof_id_type> nodes;
     std::vector<boundary_id_type> bcs;
     std::vector<std::vector<dof_id_type> > temp_node_dof_IDs;
@@ -121,6 +129,8 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     
     // resize members and local variables
     d_num_meters = d_nodeset_IDs.size();
+    d_U_dof_idx.resize(d_num_meters);
+    d_dX_dof_idx.resize(d_num_meters);
     d_node_dof_IDs.resize(d_num_meters);
     d_nodes.resize(d_num_meters);
     d_num_nodes.resize(d_num_meters);
@@ -147,7 +157,7 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
         // finish computing centroid
-        meter_centroids[jj] /= static_cast<double>(temp_node_dof_IDs[jj].size());
+        meter_centroids[jj] /= static_cast<double>(temp_nodes[jj].size());
         // make sure nodes are sorted with a particular orientation
         libMesh::Point temp_point;
         dof_id_type temp_dof_id;
@@ -232,11 +242,31 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     {
         d_meter_systems.push_back(new EquationSystems(*d_meter_meshes[jj]));
         // create a system named ellipticdg
-        LinearImplicitSystem& volume_system =
-                d_meter_systems[jj]->add_system<LinearImplicitSystem> ("ComputeVolume");
+        LinearImplicitSystem& velocity_system =
+                d_meter_systems[jj]->add_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
             // add variables to system, attach assemble function, and initialize system
-        volume_system.add_variable ("u", static_cast<Order>(1), LAGRANGE);
+        velocity_system.add_variable ("ux", static_cast<Order>(1), LAGRANGE);
+        velocity_system.add_variable ("uy", static_cast<Order>(1), LAGRANGE);
+        velocity_system.add_variable ("uz", static_cast<Order>(1), LAGRANGE);
         d_meter_systems[jj]->init();
+    }
+  
+    // store dof indices for the velocity and displacement systems that we will use later
+    for (int jj = 0; jj < d_num_meters; ++jj)
+    {
+        for (int ii = 0; ii < d_num_nodes[jj]; ++ii)
+        {
+            const Node* node = &mesh->node_ref(d_node_dof_IDs[jj][ii]);
+            std::vector<dof_id_type> dX_dof_index;
+            std::vector<dof_id_type> U_dof_index;
+            for(int d = 0; d < NDIM; ++d)
+            {
+                U_dof_index.push_back(node->dof_number(U_sys_num, d, 0));
+                dX_dof_index.push_back(node->dof_number(dX_sys_num, d, 0));
+            }
+            d_dX_dof_idx[jj].push_back(dX_dof_index);
+            d_U_dof_idx[jj].push_back(U_dof_index);
+        }
     }
     
 } // initializeTimeIndependentData
@@ -262,14 +292,14 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     // get the coordinate mapping system and velocity systems
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
     const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
-    System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+    const System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
     const unsigned int dX_sys_num = dX_system.number();
-    System& U_system = equation_systems->get_system(IBFEMethod::VELOCITY_SYSTEM_NAME);
+    const System& U_system = equation_systems->get_system(IBFEMethod::VELOCITY_SYSTEM_NAME);
     const unsigned int U_sys_num = U_system.number();
     
     // compute values of pressure at area at the quadrature points
     const LinearImplicitSystem& volume_system =
-              d_meter_systems[0]->get_system<LinearImplicitSystem> ("ComputeVolume");
+              d_meter_systems[0]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
     FEType fe_type = volume_system.variable_type(0);
     int count_qp = 0.0;    
     
@@ -324,7 +354,6 @@ IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
 #endif
     if (db->keyExists("plot_directory_name")) d_plot_directory_name = db->getString("plot_directory_name");
     if (db->keyExists("nodeset_IDs")) d_nodeset_IDs = db->getIntegerArray("nodeset_IDs");
-    if (db->keyExists("sideset_IDs")) d_sideset_IDs = db->getIntegerArray("sideset_IDs");
     return;
 } // getFromInput
 

@@ -59,15 +59,16 @@ private:
     unsigned int d_num_meters;
     unsigned int d_part;
     std::vector<int> d_num_nodes;
-    std::vector<std::vector<libMesh::dof_id_type> > d_node_dof_IDs;
+    std::vector<std::vector<std::vector<libMesh::dof_id_type> > > d_U_dof_idx;
+    std::vector<std::vector<std::vector<libMesh::dof_id_type> > > d_dX_dof_idx;
     std::vector<std::vector<libMesh::Point> > d_nodes;
+    std::vector<std::vector<libMesh::dof_id_type> > d_node_dof_IDs;
     std::vector<libMesh::EquationSystems*> d_meter_systems;
     std::vector<libMesh::Mesh*> d_meter_meshes;
     std::vector<std::string> d_meter_mesh_names;
     std::vector<double> d_flow_values, d_mean_pres_values, d_point_pres_values;
     std::string d_plot_directory_name;
     SAMRAI::tbox::Array<int> d_nodeset_IDs;
-    SAMRAI::tbox::Array<int> d_sideset_IDs;
 
 };
 
