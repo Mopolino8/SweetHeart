@@ -45,6 +45,7 @@ public:
     void
     readInstrumentData(int U_data_idx,
                        int P_data_idx,
+                       IBAMR::IBFEMethod* ib_method_ops,
                        SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
                        int timestep_num,
                        double data_time);

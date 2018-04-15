@@ -108,8 +108,8 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
 {
     // get relevant things for corresponding part
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
-    const EquationSystems* eq = fe_data_manager->getEquationSystems();
-    const MeshBase* mesh = &eq->get_mesh();
+    const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
+    const MeshBase* mesh = &equation_systems->get_mesh();
     const BoundaryInfo& boundary_info = *mesh->boundary_info;
     
     std::vector<dof_id_type> nodes;
@@ -253,10 +253,19 @@ IBFEInstrumentPanel::initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_op
 void
 IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                                         const int P_data_idx,
+                                        IBAMR::IBFEMethod* ib_method_ops,
                                         const SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
                                         const int timestep_num,
                                         const double data_time)
 {
+    
+    // get the coordinate mapping system and velocity systems
+    const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
+    const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
+    System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+    const unsigned int dX_sys_num = dX_system.number();
+    System& U_system = equation_systems->get_system(IBFEMethod::VELOCITY_SYSTEM_NAME);
+    const unsigned int U_sys_num = U_system.number();
     
     // compute values of pressure at area at the quadrature points
     const LinearImplicitSystem& volume_system =
@@ -288,7 +297,6 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
             qface_points[ii].print();
         } 
         std::cout << "\n";
-          
     }
     
 } // readInstrumentData
@@ -299,11 +307,11 @@ IBFEInstrumentPanel::outputMeshes()
 {
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
-        //std::string output_name = d_plot_directory_name+"/"+d_meter_mesh_names[ii]+".e";
-        //std::cout << output_name << "\n";
-        ExodusII_IO poo(*d_meter_meshes[ii]);
-        //poo.write(output_name);       
-        poo.write(d_meter_mesh_names[ii]+".e");       
+        std::ostringstream mesh_output;
+        //mesh_output << d_plot_directory_name << "/" << d_meter_mesh_names[ii] << ".e";
+        mesh_output << d_meter_mesh_names[ii] << ".e";
+        ExodusII_IO exio(*d_meter_meshes[ii]);
+        exio.write(mesh_output.str());       
     }
 } // outputMeshes
 
