@@ -133,7 +133,7 @@ int main(int argc, char** argv)
         // Create a simple FE mesh.                                                                                                                                     
         Mesh mesh(init.comm(), NDIM);
         ExodusII_IO mesh_reader(mesh);
-        mesh_reader.read("heart_with_nodesets_v1.e");
+        mesh_reader.read("cylinder_test.e");
         mesh.prepare_for_use();
         
         // build a test FE mesh
@@ -278,9 +278,9 @@ int main(int argc, char** argv)
         ib_method_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
              
-       /* IBFEInstrumentPanel instrument(input_db, 0);
+        IBFEInstrumentPanel instrument(input_db, 0);
         instrument.initializeTimeIndependentData(ib_method_ops, init.comm());
-        instrument.outputMeshes();*/
+        instrument.outputMeshes();
           
         // Deallocate initialization objects.
         app_initializer.setNull();

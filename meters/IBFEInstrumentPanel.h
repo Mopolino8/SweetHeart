@@ -64,6 +64,7 @@ private:
     std::vector<double> d_flow_values, d_mean_pres_values, d_point_pres_values;
     std::string d_plot_directory_name;
     SAMRAI::tbox::Array<int> d_nodeset_IDs;
+    SAMRAI::tbox::Array<int> d_sideset_IDs;
 
 };
 

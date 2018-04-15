@@ -60,20 +60,24 @@
 #include "libmesh/mesh.h"
 #include "libmesh/face_tri3.h"
 #include "libmesh/exodusII_io.h"
+#include "libmesh/point.h"
 
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
 
 #include <sstream>
 
+
+
 IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db,
-                                         const int part)
-      : d_num_meters(0),
+        const int part)
+:       d_num_meters(0),
         d_part(part),
         d_nodes(),
         d_num_nodes(),
         d_node_dof_IDs(),
         d_nodeset_IDs(),
+        d_sideset_IDs(),
         d_meter_meshes(),
         d_meter_mesh_names(),
         d_flow_values(),
@@ -97,41 +101,91 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
 
 // initialize data
 void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                                        libMesh::Parallel::Communicator& comm_in)
+        libMesh::Parallel::Communicator& comm_in)
 {
     // get relevant things for corresponding part
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
     const EquationSystems* eq = fe_data_manager->getEquationSystems();
     const MeshBase* mesh = &eq->get_mesh();
-    const BoundaryInfo& boundary_info = *mesh->boundary_info;;
+    const BoundaryInfo& boundary_info = *mesh->boundary_info;
     
     std::vector<dof_id_type> nodes;
     std::vector<boundary_id_type> bcs;
+    std::vector<std::vector<dof_id_type> > temp_node_dof_IDs;
+    std::vector<std::vector<libMesh::Point> > temp_nodes;
+    const libMesh::Point direction_vector(0.0,0.0,1.0);
+    std::vector<libMesh::Point> meter_centroids;
     boundary_info.build_node_list (nodes, bcs);
     
-    // resize members 
+    // resize members and local variables
     d_num_meters = d_nodeset_IDs.size();
     d_node_dof_IDs.resize(d_num_meters);
     d_nodes.resize(d_num_meters);
     d_num_nodes.resize(d_num_meters);
+    temp_node_dof_IDs.resize(d_num_meters);
+    temp_nodes.resize(d_num_meters);
+    meter_centroids.resize(d_num_meters);
     
-    // populate information about the nodesets we have in the mesh
+    // populate temp vectors
     for (int ii = 0; ii < nodes.size(); ++ii)
     {
         for (int jj = 0; jj < d_nodeset_IDs.size(); ++jj)
         {
             if(d_nodeset_IDs[jj] == bcs[ii])
             {
-                d_node_dof_IDs[jj].push_back(nodes[ii]);
+                temp_node_dof_IDs[jj].push_back(nodes[ii]);
                 const Node* node = &mesh->node_ref(nodes[ii]);
-                d_nodes[jj].push_back(*node);
+                temp_nodes[jj].push_back(*node);
+                meter_centroids[jj] += *node;
             }
         }
     }
     
+    // loop over meters and sort the nodes
+    for (int jj = 0; jj < d_num_meters; ++jj)
+    {
+        // finish computing centroid
+        meter_centroids[jj] /= static_cast<double>(temp_node_dof_IDs[jj].size());
+        const libMesh::Point centroid = meter_centroids[jj];
+        const libMesh::Point centroid_diff = direction_vector - centroid;
+        
+        // make sure nodes are sorted with a counter clockwise orientation
+        libMesh::Point temp_point;
+        dof_id_type temp_dof_id;
+        double max_dist = std::numeric_limits<double>::max();
+        d_nodes[jj].push_back(temp_nodes[jj][0]);
+        d_node_dof_IDs[jj].push_back(temp_node_dof_IDs[jj][0]);
+        max_dist = std::numeric_limits<double>::max();
+        for (int kk = 1; kk < temp_nodes[jj].size(); ++kk)
+        {
+            for (int ll = 0; ll < temp_nodes[jj].size(); ++ll)
+            {
+                // here we find the closest node "to the right" of the previous
+                // node by taking some cross products.
+                libMesh::Point foo1 = centroid - temp_nodes[jj][ll];
+                libMesh::Point foo2 = temp_nodes[jj][ll] - d_nodes[jj][kk-1];
+                libMesh::Point cross = foo2.cross(foo1);
+                
+                if(temp_nodes[jj][ll] != d_nodes[jj][kk-1] && cross * centroid_diff < 0)
+                {
+                    libMesh::Point dist = temp_nodes[jj][ll] - d_nodes[jj][kk-1];
+                    if(dist.norm() < max_dist)
+                    {
+                        temp_point = temp_nodes[jj][ll];
+                        temp_dof_id = temp_node_dof_IDs[jj][ll];
+                        max_dist = dist.norm();
+                    }
+                }
+            }
+            d_nodes[jj].push_back(temp_point);
+            d_node_dof_IDs[jj].push_back(temp_dof_id);
+            max_dist = std::numeric_limits<double>::max();
+        }
+    } // loop over meters
+        
     // initialize meshes and number of nodes
     for(int jj = 0; jj < d_num_meters; ++jj)
-    {
+        {
         d_meter_meshes.push_back(new Mesh (comm_in, NDIM));
         std::ostringstream id; id << d_nodeset_IDs[jj];
         d_meter_mesh_names.push_back("meter_mesh_"+id.str());
@@ -140,9 +194,9 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     
     std::ofstream stuff_stream;
     stuff_stream.open("test_output.dat");
-    for (int dd = 0; dd < d_nodes[0].size(); ++dd)
+    for (int dd = 0; dd < temp_nodes[0].size(); ++dd)
     {
-        stuff_stream << d_nodes[0][dd](0) << " " <<  d_nodes[0][dd](1) << " " <<  d_nodes[0][dd](2) << "\n";
+        stuff_stream << temp_nodes[0][dd](0) << " " <<  temp_nodes[0][dd](1) << " " <<  temp_nodes[0][dd](2) << "\n";
     }
     stuff_stream.close();
     
@@ -169,12 +223,15 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
             elem->set_node(2) = d_meter_meshes[ii]->node_ptr(jj+2);
         }
         d_meter_meshes[ii]->prepare_for_use();
-    }
+    } // loop over meters
+
 }
-                                      
-void IBFEInstrumentPanel::initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                                      const int timestep_num,
-                                                      const double data_time)
+
+
+void 
+IBFEInstrumentPanel::initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_ops,
+                                                 const int timestep_num,
+                                                 const double data_time)
 {
     
 }
@@ -196,7 +253,10 @@ IBFEInstrumentPanel::outputMeshes()
 {
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
+        //std::string output_name = d_plot_directory_name+"/"+d_meter_mesh_names[ii]+".e";
+        //std::cout << output_name << "\n";
         ExodusII_IO poo(*d_meter_meshes[ii]);
+        //poo.write(output_name);       
         poo.write(d_meter_mesh_names[ii]+".e");       
     }
 }
@@ -210,6 +270,7 @@ IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
 #endif
     if (db->keyExists("plot_directory_name")) d_plot_directory_name = db->getString("plot_directory_name");
     if (db->keyExists("nodeset_IDs")) d_nodeset_IDs = db->getIntegerArray("nodeset_IDs");
+    if (db->keyExists("sideset_IDs")) d_sideset_IDs = db->getIntegerArray("sideset_IDs");
     return;
 } // getFromInput
 
