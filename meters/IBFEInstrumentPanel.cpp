@@ -62,6 +62,7 @@
 #include "libmesh/exodusII_io.h"
 #include "libmesh/point.h"
 #include "libmesh/linear_implicit_system.h"
+#include "libmesh/numeric_vector.h"
 
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
@@ -237,17 +238,20 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
         d_meter_meshes[ii]->prepare_for_use();
     } // loop over meters
     
-    // initialize meter mesh equation systems
+    // initialize meter mesh equation systems, for both velocity and displacement
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
         d_meter_systems.push_back(new EquationSystems(*d_meter_meshes[jj]));
-        // create a system named ellipticdg
-        LinearImplicitSystem& velocity_system =
+        LinearImplicitSystem& velocity_sys =
                 d_meter_systems[jj]->add_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
-            // add variables to system, attach assemble function, and initialize system
-        velocity_system.add_variable ("ux", static_cast<Order>(1), LAGRANGE);
-        velocity_system.add_variable ("uy", static_cast<Order>(1), LAGRANGE);
-        velocity_system.add_variable ("uz", static_cast<Order>(1), LAGRANGE);
+        velocity_sys.add_variable ("ux", static_cast<Order>(1), LAGRANGE);
+        velocity_sys.add_variable ("uy", static_cast<Order>(1), LAGRANGE);
+        velocity_sys.add_variable ("uz", static_cast<Order>(1), LAGRANGE);
+        LinearImplicitSystem& displacement_sys =
+                d_meter_systems[jj]->add_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+        displacement_sys.add_variable ("dXx", static_cast<Order>(1), LAGRANGE);
+        displacement_sys.add_variable ("dXy", static_cast<Order>(1), LAGRANGE);
+        displacement_sys.add_variable ("dXz", static_cast<Order>(1), LAGRANGE);
         d_meter_systems[jj]->init();
     }
   
@@ -261,8 +265,8 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
             std::vector<dof_id_type> U_dof_index;
             for(int d = 0; d < NDIM; ++d)
             {
-                U_dof_index.push_back(node->dof_number(U_sys_num, d, 0));
                 dX_dof_index.push_back(node->dof_number(dX_sys_num, d, 0));
+                U_dof_index.push_back(node->dof_number(U_sys_num, d, 0));
             }
             d_dX_dof_idx[jj].push_back(dX_dof_index);
             d_U_dof_idx[jj].push_back(U_dof_index);
@@ -294,40 +298,76 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
     const System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
     const unsigned int dX_sys_num = dX_system.number();
+    NumericVector<double>& dX_coords = *dX_system.solution;
     const System& U_system = equation_systems->get_system(IBFEMethod::VELOCITY_SYSTEM_NAME);
     const unsigned int U_sys_num = U_system.number();
+    NumericVector<double>& U_coords = *U_system.solution;
     
-    // compute values of pressure at area at the quadrature points
-    const LinearImplicitSystem& volume_system =
-              d_meter_systems[0]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
-    FEType fe_type = volume_system.variable_type(0);
-    int count_qp = 0.0;    
-    
-    UniquePtr<FEBase> fe_elem_face(FEBase::build(NDIM-1, fe_type));
-    QGauss qface(NDIM-1, fe_type.default_quadrature_order());
-    fe_elem_face->attach_quadrature_rule(&qface);
-    
-    //  for surface integrals
-    const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
-    const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
-    const std::vector<libMesh::Point> & qface_points = fe_elem_face->get_xyz();
-    
-    // loop over elements
-    MeshBase::const_element_iterator el = d_meter_meshes[0]->active_local_elements_begin();
-    const MeshBase::const_element_iterator end_el = d_meter_meshes[0]->active_local_elements_end();
-    
-    for ( ; el != end_el; ++el)
-    {  
-        const Elem * elem = *el;
-        fe_elem_face->reinit(elem);
+    // loop over meter meshes
+    for (int jj = 0; jj < d_num_meters; ++jj)
+    {
+        // get displacement and velocity systems for meter mesh
+        const LinearImplicitSystem& velocity_sys =
+        d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
+        const unsigned int velocity_sys_num = velocity_sys.number();
+        NumericVector<double>& velocity_coords = *velocity_sys.solution;
         
-        std::cout << "\n elem = " << elem->id() << "\n";
-        for(int ii = 0; ii < qface_points.size(); ++ii)
+        const LinearImplicitSystem& displacement_sys =
+        d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+        const unsigned int displacement_sys_num = displacement_sys.number();
+        NumericVector<double>& displacement_coords = *displacement_sys.solution;
+        
+        FEType fe_type = velocity_sys.variable_type(0);
+        int count_qp = 0.0;    
+        
+        // set up FE objects
+        UniquePtr<FEBase> fe_elem_face(FEBase::build(NDIM-1, fe_type));
+        QGauss qface(NDIM-1, fe_type.default_quadrature_order());
+        fe_elem_face->attach_quadrature_rule(&qface);
+        
+        //  for surface integrals
+        const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
+        const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
+        const std::vector<libMesh::Point> & qface_points = fe_elem_face->get_xyz();
+        
+        // loop over nodes
+        for (int ii = 0; ii < d_num_nodes[jj]; ++ii)
         {
-            qface_points[ii].print();
-        } 
-        std::cout << "\n";
-    }
+            // get node on meter mesh
+            const Node* node = &d_meter_meshes[jj]->node_ref(ii);
+            
+            // get corresponding dofs on parent mesh
+            std::vector<double> U_dofs;
+            U_dofs.resize(NDIM);
+            U_coords.get(d_U_dof_idx[jj][ii], U_dofs);
+            
+            std::vector<double> dX_dofs;
+            dX_dofs.resize(NDIM);
+            dX_coords.get(d_dX_dof_idx[jj][ii], dX_dofs);
+            
+            // set dofs in meter mesh to correspond to the same values
+            // as in the parent mesh
+            for (int d = 0; d < NDIM; ++d)
+            {
+                const int vel_dof_idx = node->dof_number(velocity_sys_num, d, 0);
+                velocity_coords.set(vel_dof_idx, U_dofs[d]);
+                const int disp_dof_idx = node->dof_number(displacement_sys_num, d, 0);
+                displacement_coords.set(disp_dof_idx, dX_dofs[d]);
+            }
+        }
+        
+        MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
+        const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
+        
+        for ( ; el != end_el; ++el)
+        {  
+            const Elem * elem = *el;
+            fe_elem_face->reinit(elem);
+            
+           
+        }
+        
+    } // loop over meters
     
 } // readInstrumentData
 

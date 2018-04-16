@@ -51,6 +51,8 @@
 #include <libmesh/periodic_boundary.h>
 #include <libmesh/boundary_info.h>
 #include "libmesh/face_tri3.h"
+#include "libmesh/mesh_generation.h"
+#include "libmesh/mesh_modification.h"
 
 // Headers for application-specific algorithm/data structure objects
 #include <boost/multi_array.hpp>
@@ -134,6 +136,7 @@ int main(int argc, char** argv)
         Mesh mesh(init.comm(), NDIM);
         ExodusII_IO mesh_reader(mesh);
         mesh_reader.read("cylinder_test.e");
+        MeshTools::Modification::scale(mesh, 0.001);
         mesh.prepare_for_use();
         
         // build a test FE mesh
