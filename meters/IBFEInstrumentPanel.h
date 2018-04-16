@@ -16,6 +16,7 @@
 #include "libmesh/point.h"
 #include "libmesh/mesh.h"
 #include "libmesh/equation_systems.h"
+#include "libmesh/exodusII_io.h"
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
 
@@ -50,9 +51,10 @@ public:
                        int timestep_num,
                        double data_time);
     
-    // write out meshes
+    // write out meshes and equation systems in Exodus file
     void
-    outputMeshes();
+    outputExodus(int timestep,
+                 double loop_time);
     
 private:
        
@@ -64,6 +66,7 @@ private:
     std::vector<std::vector<libMesh::Point> > d_nodes;
     std::vector<std::vector<libMesh::dof_id_type> > d_node_dof_IDs;
     std::vector<libMesh::EquationSystems*> d_meter_systems;
+    std::vector<libMesh::ExodusII_IO*> d_exodus_io;
     std::vector<libMesh::Mesh*> d_meter_meshes;
     std::vector<std::string> d_meter_mesh_names;
     std::vector<double> d_flow_values, d_mean_pres_values, d_point_pres_values;

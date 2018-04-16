@@ -99,6 +99,7 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
     // delete vector of pointers to mesh objects
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
+        delete d_exodus_io[ii];
         delete d_meter_meshes[ii];
         delete d_meter_systems[ii];
     }
@@ -236,6 +237,7 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
             elem->set_node(2) = d_meter_meshes[ii]->node_ptr(jj+2);
         }
         d_meter_meshes[ii]->prepare_for_use();
+        d_exodus_io.push_back(new ExodusII_IO(*d_meter_meshes[ii]));
     } // loop over meters
     
     // initialize meter mesh equation systems, for both velocity and displacement
@@ -311,6 +313,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
         const unsigned int velocity_sys_num = velocity_sys.number();
         NumericVector<double>& velocity_coords = *velocity_sys.solution;
+        NumericVector<double>* velocity_ghost_coords = velocity_sys.current_local_solution.get();
         
         const LinearImplicitSystem& displacement_sys =
         d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
@@ -363,8 +366,6 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         {  
             const Elem * elem = *el;
             fe_elem_face->reinit(elem);
-            
-           
         }
         
     } // loop over meters
@@ -373,15 +374,15 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
 
 // write out meshes
 void
-IBFEInstrumentPanel::outputMeshes()
+IBFEInstrumentPanel::outputExodus(const int timestep, 
+                                  const double loop_time)
 {
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
+        if(timestep == 1) Utilities::recursiveMkdir(d_plot_directory_name);
         std::ostringstream mesh_output;
-        //mesh_output << d_plot_directory_name << "/" << d_meter_mesh_names[ii] << ".e";
-        mesh_output << d_meter_mesh_names[ii] << ".e";
-        ExodusII_IO exio(*d_meter_meshes[ii]);
-        exio.write(mesh_output.str());       
+        mesh_output << d_plot_directory_name << "/" << "" << d_meter_mesh_names[ii] << ".ex2";
+        d_exodus_io[ii]->write_timestep(mesh_output.str(), *d_meter_systems[ii], timestep, loop_time);       
     }
 } // outputMeshes
 

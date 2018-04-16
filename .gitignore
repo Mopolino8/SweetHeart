@@ -39,6 +39,7 @@ meters/*.dat
 meters/main2d
 meters/main3d
 meters/viz_IB3d
+meters/viz_inst3d
 meters/*.log
 meters/*.d
 meters/*.curve
