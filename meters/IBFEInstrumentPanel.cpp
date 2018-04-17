@@ -63,6 +63,8 @@
 #include "libmesh/point.h"
 #include "libmesh/linear_implicit_system.h"
 #include "libmesh/numeric_vector.h"
+#include "libmesh/mesh_function.h"
+#include "libmesh/dense_vector.h"
 
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
@@ -388,6 +390,16 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         const IntVector<NDIM>& ratio = level->getRatio();
         std::vector<Index<NDIM> > qp_indices; // vector of indices for the quadrature points
         
+        // build MeshFunction to figure out the physical locations of the quadrature
+        // points
+        std::vector<unsigned int> vars; 
+        for (int d = 0; d < NDIM; ++d) vars.push_back(d);
+        libMesh::MeshFunction mesh_fcn(*d_meter_systems[jj],
+                              *displacement_sys.solution,
+                              displacement_sys.get_dof_map(),
+                              vars);
+        mesh_fcn.init();
+                
         // loop over elements
         MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
         const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
@@ -396,13 +408,18 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
             const Elem * elem = *el;
             fe_elem->reinit(elem);
             
-            // loop over quadrature points and stores their indices
+            // loop over quadrature points, compute their physical locations
+            // after displacement, and stores their indices.
             for (int qp = 0; qp < qp_points.size(); ++qp)
             {
-               std::vector<double> qp_temp; 
-               for (int d = 0; d < NDIM; ++d) qp_temp.push_back( qp_points[qp](d) ); 
-               const Index<NDIM> qp_index = IndexUtilities::getCellIndex(&qp_temp[0], hierarchy->getGridGeometry(), ratio); 
-               qp_indices.push_back(qp_index);
+                std::vector<double> qp_temp; qp_temp.resize(NDIM); 
+                DenseVector<double> disp_vec; disp_vec.resize(NDIM);
+                mesh_fcn(qp_points[qp], 0, disp_vec);
+                std::cout << "disp =  " << disp_vec(0) << " " << disp_vec(1) << " " << disp_vec(2) << "\n";
+                // calculating physical location of the quadrature point
+                for (int d = 0; d < NDIM; ++d) qp_temp[d] = qp_points[qp](d) + disp_vec(d); 
+                const Index<NDIM> qp_index = IndexUtilities::getCellIndex(&qp_temp[0], hierarchy->getGridGeometry(), ratio); 
+                qp_indices.push_back(qp_index);
             }
             
         }
