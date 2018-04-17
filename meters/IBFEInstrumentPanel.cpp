@@ -68,6 +68,8 @@
 #include "ibtk/FEDataManager.h"
 #include "ibtk/IndexUtilities.h"
 
+#include "BoxArray.h"
+
 #include <sstream>
 
 
@@ -286,15 +288,12 @@ void IBFEInstrumentPanel::initializeData(IBAMR::IBFEMethod* ib_method_ops,
 } // initializeData
 
 //**********************************************
-// read instrument data
+// update system data
 //**********************************************
+
 void
-IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
-                                        const int P_data_idx,
-                                        IBAMR::IBFEMethod* ib_method_ops,
-                                        const SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
-                                        const int timestep_num,
-                                        const double data_time)
+IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
+                                      const int meter_mesh_number)
 {
     
     // get the coordinate mapping system and velocity systems
@@ -307,19 +306,69 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     const unsigned int U_sys_num = U_system.number();
     NumericVector<double>& U_coords = *U_system.solution;
     
+    // get displacement and velocity systems for meter mesh
+    const LinearImplicitSystem& velocity_sys =
+    d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
+    const unsigned int velocity_sys_num = velocity_sys.number();
+    NumericVector<double>& velocity_coords = *velocity_sys.solution;
+    
+    const LinearImplicitSystem& displacement_sys =
+    d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+    const unsigned int displacement_sys_num = displacement_sys.number();
+    NumericVector<double>& displacement_coords = *displacement_sys.solution;
+        
+    // loop over nodes
+    for (int ii = 0; ii < d_num_nodes[meter_mesh_number]; ++ii)
+    {
+        // get node on meter mesh
+        const Node* node = &d_meter_meshes[meter_mesh_number]->node_ref(ii);
+        
+        // get corresponding dofs on parent mesh
+        std::vector<double> U_dofs;
+        U_dofs.resize(NDIM);
+        U_coords.get(d_U_dof_idx[meter_mesh_number][ii], U_dofs);
+        
+        std::vector<double> dX_dofs;
+        dX_dofs.resize(NDIM);
+        dX_coords.get(d_dX_dof_idx[meter_mesh_number][ii], dX_dofs);
+        
+        // set dofs in meter mesh to correspond to the same values
+        // as in the parent mesh
+        for (int d = 0; d < NDIM; ++d)
+        {
+            const int vel_dof_idx = node->dof_number(velocity_sys_num, d, 0);
+            velocity_coords.set(vel_dof_idx, U_dofs[d]);
+            const int disp_dof_idx = node->dof_number(displacement_sys_num, d, 0);
+            displacement_coords.set(disp_dof_idx, dX_dofs[d]);
+        }
+    }
+    
+}
+
+//**********************************************
+// read instrument data
+//**********************************************
+void
+IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
+                                        const int P_data_idx,
+                                        IBAMR::IBFEMethod* ib_method_ops,
+                                        const SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
+                                        const int timestep_num,
+                                        const double data_time)
+{
+    
     // loop over meter meshes
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
+        // update FE system data for meter_mesh
+        updateSystemData(ib_method_ops, jj);
+        
         // get displacement and velocity systems for meter mesh
         const LinearImplicitSystem& velocity_sys =
         d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
-        const unsigned int velocity_sys_num = velocity_sys.number();
-        NumericVector<double>& velocity_coords = *velocity_sys.solution;
         
         const LinearImplicitSystem& displacement_sys =
         d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
-        const unsigned int displacement_sys_num = displacement_sys.number();
-        NumericVector<double>& displacement_coords = *displacement_sys.solution;
         
         FEType fe_type = velocity_sys.variable_type(0);
         int count_qp = 0.0;    
@@ -334,36 +383,11 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         const std::vector<libMesh::Point>& qp_normals = fe_elem->get_normals();
         const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
         
-        // loop over nodes
-        for (int ii = 0; ii < d_num_nodes[jj]; ++ii)
-        {
-            // get node on meter mesh
-            const Node* node = &d_meter_meshes[jj]->node_ref(ii);
-            
-            // get corresponding dofs on parent mesh
-            std::vector<double> U_dofs;
-            U_dofs.resize(NDIM);
-            U_coords.get(d_U_dof_idx[jj][ii], U_dofs);
-            
-            std::vector<double> dX_dofs;
-            dX_dofs.resize(NDIM);
-            dX_coords.get(d_dX_dof_idx[jj][ii], dX_dofs);
-            
-            // set dofs in meter mesh to correspond to the same values
-            // as in the parent mesh
-            for (int d = 0; d < NDIM; ++d)
-            {
-                const int vel_dof_idx = node->dof_number(velocity_sys_num, d, 0);
-                velocity_coords.set(vel_dof_idx, U_dofs[d]);
-                const int disp_dof_idx = node->dof_number(displacement_sys_num, d, 0);
-                displacement_coords.set(disp_dof_idx, dX_dofs[d]);
-            }
-        }
-        
         // information about the AMR grid
         Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(d_level_number);
         const IntVector<NDIM>& ratio = level->getRatio();
-
+        std::vector<Index<NDIM> > qp_indices; // vector of indices for the quadrature points
+        
         // loop over elements
         MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
         const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
@@ -372,14 +396,31 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
             const Elem * elem = *el;
             fe_elem->reinit(elem);
             
-            // loop over quadrature points
+            // loop over quadrature points and stores their indices
             for (int qp = 0; qp < qp_points.size(); ++qp)
             {
                std::vector<double> qp_temp; 
                for (int d = 0; d < NDIM; ++d) qp_temp.push_back( qp_points[qp](d) ); 
                const Index<NDIM> qp_index = IndexUtilities::getCellIndex(&qp_temp[0], hierarchy->getGridGeometry(), ratio); 
+               qp_indices.push_back(qp_index);
             }
             
+        }
+        
+        // loop over patches
+        for (PatchLevel<NDIM>::Iterator p(level); p; p++)
+        {
+            const Pointer<Patch<NDIM> > patch = level->getPatch(p());
+            const Box<NDIM>& patch_box = patch->getBox();
+            
+            // loop over indices for the quadrature points
+            for(int qp = 0; qp < qp_indices.size(); ++qp)
+            {
+                if( patch_box.contains(qp_indices[qp]) )
+                {
+                    
+                }
+            }
         }
         
     } // loop over meters

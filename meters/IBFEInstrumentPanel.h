@@ -36,8 +36,13 @@ public:
     
     // initialize data
     void initializeData(IBAMR::IBFEMethod* ib_method_ops,
-                                       libMesh::Parallel::Communicator& comm_in);
+                        libMesh::Parallel::Communicator& comm_in);
    
+    // update system data
+    void
+    updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
+                                          int meter_num);
+    
     // read instrument data
     void
     readInstrumentData(int U_data_idx,
