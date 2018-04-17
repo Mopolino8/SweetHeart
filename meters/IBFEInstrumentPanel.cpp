@@ -66,6 +66,7 @@
 
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
+#include "ibtk/IndexUtilities.h"
 
 #include <sstream>
 
@@ -81,6 +82,7 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_U_dof_idx(),        
         d_dX_dof_idx(),
         d_nodeset_IDs(),
+        d_level_number(),
         d_meter_meshes(),
         d_meter_systems(),
         d_meter_mesh_names(),
@@ -105,8 +107,10 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
     }
 }
 
+//**********************************************
 // initialize data
-void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_method_ops,
+//**********************************************
+void IBFEInstrumentPanel::initializeData(IBAMR::IBFEMethod* ib_method_ops,
                                                         libMesh::Parallel::Communicator& comm_in)
 {
     // get relevant things for corresponding part
@@ -114,6 +118,10 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
     const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
     const MeshBase* mesh = &equation_systems->get_mesh();
     const BoundaryInfo& boundary_info = *mesh->boundary_info;
+    
+    // assign AMR mesh level number for the meter meshes
+    // to be the same as the parent mesh
+    d_level_number = fe_data_manager->getLevelNumber();
     
     // get equation systems from the mesh we will need.
     const System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
@@ -246,14 +254,14 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
         d_meter_systems.push_back(new EquationSystems(*d_meter_meshes[jj]));
         LinearImplicitSystem& velocity_sys =
                 d_meter_systems[jj]->add_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
-        velocity_sys.add_variable ("ux", static_cast<Order>(1), LAGRANGE);
-        velocity_sys.add_variable ("uy", static_cast<Order>(1), LAGRANGE);
-        velocity_sys.add_variable ("uz", static_cast<Order>(1), LAGRANGE);
+        velocity_sys.add_variable ("U_0", static_cast<Order>(1), LAGRANGE);
+        velocity_sys.add_variable ("U_1", static_cast<Order>(1), LAGRANGE);
+        velocity_sys.add_variable ("U_2", static_cast<Order>(1), LAGRANGE);
         LinearImplicitSystem& displacement_sys =
                 d_meter_systems[jj]->add_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
-        displacement_sys.add_variable ("dXx", static_cast<Order>(1), LAGRANGE);
-        displacement_sys.add_variable ("dXy", static_cast<Order>(1), LAGRANGE);
-        displacement_sys.add_variable ("dXz", static_cast<Order>(1), LAGRANGE);
+        displacement_sys.add_variable ("dX_0", static_cast<Order>(1), LAGRANGE);
+        displacement_sys.add_variable ("dX_1", static_cast<Order>(1), LAGRANGE);
+        displacement_sys.add_variable ("dX_2", static_cast<Order>(1), LAGRANGE);
         d_meter_systems[jj]->init();
     }
   
@@ -275,17 +283,11 @@ void IBFEInstrumentPanel::initializeTimeIndependentData(IBAMR::IBFEMethod* ib_me
         }
     }
     
-} // initializeTimeIndependentData
+} // initializeData
 
-void 
-IBFEInstrumentPanel::initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                                 const int timestep_num,
-                                                 const double data_time)
-{
-    
-} 
-
+//**********************************************
 // read instrument data
+//**********************************************
 void
 IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                                         const int P_data_idx,
@@ -313,7 +315,6 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
         const unsigned int velocity_sys_num = velocity_sys.number();
         NumericVector<double>& velocity_coords = *velocity_sys.solution;
-        NumericVector<double>* velocity_ghost_coords = velocity_sys.current_local_solution.get();
         
         const LinearImplicitSystem& displacement_sys =
         d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
@@ -324,14 +325,14 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         int count_qp = 0.0;    
         
         // set up FE objects
-        UniquePtr<FEBase> fe_elem_face(FEBase::build(NDIM-1, fe_type));
-        QGauss qface(NDIM-1, fe_type.default_quadrature_order());
-        fe_elem_face->attach_quadrature_rule(&qface);
+        UniquePtr<FEBase> fe_elem(FEBase::build(NDIM-1, fe_type));
+        QGauss qrule(NDIM-1, fe_type.default_quadrature_order());
+        fe_elem->attach_quadrature_rule(&qrule);
         
         //  for surface integrals
-        const std::vector<Real> & JxW_face = fe_elem_face->get_JxW();
-        const std::vector<libMesh::Point> & qface_normals = fe_elem_face->get_normals();
-        const std::vector<libMesh::Point> & qface_points = fe_elem_face->get_xyz();
+        const std::vector<Real>& JxW = fe_elem->get_JxW();
+        const std::vector<libMesh::Point>& qp_normals = fe_elem->get_normals();
+        const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
         
         // loop over nodes
         for (int ii = 0; ii < d_num_nodes[jj]; ++ii)
@@ -359,20 +360,35 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
             }
         }
         
+        // information about the AMR grid
+        Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(d_level_number);
+        const IntVector<NDIM>& ratio = level->getRatio();
+
+        // loop over elements
         MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
         const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
-        
         for ( ; el != end_el; ++el)
         {  
             const Elem * elem = *el;
-            fe_elem_face->reinit(elem);
+            fe_elem->reinit(elem);
+            
+            // loop over quadrature points
+            for (int qp = 0; qp < qp_points.size(); ++qp)
+            {
+               std::vector<double> qp_temp; 
+               for (int d = 0; d < NDIM; ++d) qp_temp.push_back( qp_points[qp](d) ); 
+               const Index<NDIM> qp_index = IndexUtilities::getCellIndex(&qp_temp[0], hierarchy->getGridGeometry(), ratio); 
+            }
+            
         }
         
     } // loop over meters
     
 } // readInstrumentData
 
+//**********************************************
 // write out meshes
+//**********************************************
 void
 IBFEInstrumentPanel::outputExodus(const int timestep, 
                                   const double loop_time)
@@ -386,7 +402,9 @@ IBFEInstrumentPanel::outputExodus(const int timestep,
     }
 } // outputMeshes
 
+//**********************************************
 // get data from input file
+//**********************************************
 void
 IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
 {

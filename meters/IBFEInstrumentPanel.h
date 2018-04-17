@@ -35,13 +35,9 @@ public:
     void getFromInput(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> db);
     
     // initialize data
-    void initializeTimeIndependentData(IBAMR::IBFEMethod* ib_method_ops,
+    void initializeData(IBAMR::IBFEMethod* ib_method_ops,
                                        libMesh::Parallel::Communicator& comm_in);
-                                      
-    void initializeTimeDependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                     int timestep_num,
-                                     double data_time);
-    
+   
     // read instrument data
     void
     readInstrumentData(int U_data_idx,
@@ -60,6 +56,7 @@ private:
        
     unsigned int d_num_meters;
     unsigned int d_part;
+    int d_level_number;
     std::vector<int> d_num_nodes;
     std::vector<std::vector<std::vector<libMesh::dof_id_type> > > d_U_dof_idx;
     std::vector<std::vector<std::vector<libMesh::dof_id_type> > > d_dX_dof_idx;

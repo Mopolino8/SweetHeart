@@ -108,7 +108,6 @@ int main(int argc, char** argv)
         // and enable file logging.
         Pointer<AppInitializer> app_initializer = new AppInitializer(argc, argv, "IB.log");
         Pointer<Database> input_db = app_initializer->getInputDatabase();
-        Pointer<Database> ibfe_db = app_initializer->getComponentDatabase("IBFEMethod");
         
         // Get various standard options set in the input file.
         const bool dump_viz_data = app_initializer->dumpVizData();
@@ -283,7 +282,7 @@ int main(int argc, char** argv)
              
         // initialize IBFE instrumentation
         IBFEInstrumentPanel instrument(input_db, 0);
-        instrument.initializeTimeIndependentData(ib_method_ops, init.comm());
+        instrument.initializeData(ib_method_ops, init.comm());
           
         // Deallocate initialization objects.
         app_initializer.setNull();
