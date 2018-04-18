@@ -75,6 +75,203 @@
 #include <sstream>
 
 
+// static functions
+namespace
+{
+    
+    double
+    linear_interp(const Vector& X,
+            const Index<NDIM>& i_cell,
+            const Vector& X_cell,
+            const CellData<NDIM, double>& v,
+            const Index<NDIM>& /*patch_lower*/,
+            const Index<NDIM>& /*patch_upper*/,
+            const double* const /*x_lower*/,
+            const double* const /*x_upper*/,
+            const double* const dx)
+    {
+        boost::array<bool, NDIM> is_lower;
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            is_lower[d] = X[d] < X_cell[d];
+        }
+        double U = 0.0;
+#if (NDIM == 3)
+        for (int i_shift2 = (is_lower[2] ? -1 : 0); i_shift2 <= (is_lower[2] ? 0 : 1); ++i_shift2)
+        {
+#endif
+            for (int i_shift1 = (is_lower[1] ? -1 : 0); i_shift1 <= (is_lower[1] ? 0 : 1); ++i_shift1)
+            {
+                for (int i_shift0 = (is_lower[0] ? -1 : 0); i_shift0 <= (is_lower[0] ? 0 : 1); ++i_shift0)
+                {
+                    const Vector X_center(X_cell[0] + static_cast<double>(i_shift0) * dx[0],
+                            X_cell[1] + static_cast<double>(i_shift1) * dx[1]
+#if (NDIM == 3)
+                    ,
+                            X_cell[2] + static_cast<double>(i_shift2) * dx[2]
+#endif
+                    );
+                    const double wgt =
+                    (((X[0] < X_center[0] ? X[0] - (X_center[0] - dx[0]) : (X_center[0] + dx[0]) - X[0]) / dx[0]) *
+                    ((X[1] < X_center[1] ? X[1] - (X_center[1] - dx[1]) : (X_center[1] + dx[1]) - X[1]) / dx[1])
+#if (NDIM == 3)
+                    *
+                    ((X[2] < X_center[2] ? X[2] - (X_center[2] - dx[2]) : (X_center[2] + dx[2]) - X[2]) / dx[2])
+#endif
+                    );
+                    const Index<NDIM> i(i_shift0 + i_cell(0),
+                            i_shift1 + i_cell(1)
+#if (NDIM == 3)
+                    ,
+                            i_shift2 + i_cell(2)
+#endif
+                    );
+                    const CellIndex<NDIM> i_c(i);
+                    U += v(i_c) * wgt;
+                }
+            }
+#if (NDIM == 3)
+        }
+#endif
+        return U;
+    } // linear_interp
+    
+    template <int N>
+    Eigen::Matrix<double, N, 1>
+    linear_interp(const Vector& X,
+            const Index<NDIM>& i_cell,
+            const Vector& X_cell,
+            const CellData<NDIM, double>& v,
+            const Index<NDIM>& /*patch_lower*/,
+            const Index<NDIM>& /*patch_upper*/,
+            const double* const /*x_lower*/,
+            const double* const /*x_upper*/,
+            const double* const dx)
+    {
+#if !defined(NDEBUG)
+        TBOX_ASSERT(v.getDepth() == N);
+#endif
+        boost::array<bool, NDIM> is_lower;
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            is_lower[d] = X[d] < X_cell[d];
+        }
+        Eigen::Matrix<double, N, 1> U(Eigen::Matrix<double, N, 1>::Zero());
+#if (NDIM == 3)
+        for (int i_shift2 = (is_lower[2] ? -1 : 0); i_shift2 <= (is_lower[2] ? 0 : 1); ++i_shift2)
+        {
+#endif
+            for (int i_shift1 = (is_lower[1] ? -1 : 0); i_shift1 <= (is_lower[1] ? 0 : 1); ++i_shift1)
+            {
+                for (int i_shift0 = (is_lower[0] ? -1 : 0); i_shift0 <= (is_lower[0] ? 0 : 1); ++i_shift0)
+                {
+                    const Vector X_center(X_cell[0] + static_cast<double>(i_shift0) * dx[0],
+                            X_cell[1] + static_cast<double>(i_shift1) * dx[1]
+#if (NDIM == 3)
+                    ,
+                            X_cell[2] + static_cast<double>(i_shift2) * dx[2]
+#endif
+                    );
+                    const double wgt =
+                    (((X[0] < X_center[0] ? X[0] - (X_center[0] - dx[0]) : (X_center[0] + dx[0]) - X[0]) / dx[0]) *
+                    ((X[1] < X_center[1] ? X[1] - (X_center[1] - dx[1]) : (X_center[1] + dx[1]) - X[1]) / dx[1])
+#if (NDIM == 3)
+                    *
+                    ((X[2] < X_center[2] ? X[2] - (X_center[2] - dx[2]) : (X_center[2] + dx[2]) - X[2]) / dx[2])
+#endif
+                    );
+                    const Index<NDIM> i(i_shift0 + i_cell(0),
+                            i_shift1 + i_cell(1)
+#if (NDIM == 3)
+                    ,
+                            i_shift2 + i_cell(2)
+#endif
+                    );
+                    const CellIndex<NDIM> i_c(i);
+                    for (int k = 0; k < N; ++k)
+                    {
+                        U[k] += v(i_c, k) * wgt;
+                    }
+                }
+            }
+#if (NDIM == 3)
+        }
+#endif
+        return U;
+    } // linear_interp
+    
+    Vector
+    linear_interp(const Vector& X,
+            const Index<NDIM>& i_cell,
+            const Vector& X_cell,
+            const SideData<NDIM, double>& v,
+            const Index<NDIM>& /*patch_lower*/,
+            const Index<NDIM>& /*patch_upper*/,
+            const double* const /*x_lower*/,
+            const double* const /*x_upper*/,
+            const double* const dx)
+    {
+#if !defined(NDEBUG)
+        TBOX_ASSERT(v.getDepth() == 1);
+#endif
+        Vector U(Vector::Zero());
+        for (unsigned int axis = 0; axis < NDIM; ++axis)
+        {
+            boost::array<bool, NDIM> is_lower;
+            for (unsigned int d = 0; d < NDIM; ++d)
+            {
+                if (d == axis)
+                {
+                    is_lower[d] = false;
+                }
+                else
+                {
+                    is_lower[d] = X[d] < X_cell[d];
+                }
+            }
+#if (NDIM == 3)
+            for (int i_shift2 = (is_lower[2] ? -1 : 0); i_shift2 <= (is_lower[2] ? 0 : 1); ++i_shift2)
+            {
+#endif
+                for (int i_shift1 = (is_lower[1] ? -1 : 0); i_shift1 <= (is_lower[1] ? 0 : 1); ++i_shift1)
+                {
+                    for (int i_shift0 = (is_lower[0] ? -1 : 0); i_shift0 <= (is_lower[0] ? 0 : 1); ++i_shift0)
+                    {
+                        const Vector X_side(X_cell[0] + (static_cast<double>(i_shift0) + (axis == 0 ? -0.5 : 0.0)) * dx[0],
+                                X_cell[1] + (static_cast<double>(i_shift1) + (axis == 1 ? -0.5 : 0.0)) * dx[1]
+#if (NDIM == 3)
+                        ,
+                                X_cell[2] + (static_cast<double>(i_shift2) + (axis == 2 ? -0.5 : 0.0)) * dx[2]
+#endif
+                        );
+                        const double wgt =
+                        (((X[0] < X_side[0] ? X[0] - (X_side[0] - dx[0]) : (X_side[0] + dx[0]) - X[0]) / dx[0]) *
+                        ((X[1] < X_side[1] ? X[1] - (X_side[1] - dx[1]) : (X_side[1] + dx[1]) - X[1]) / dx[1])
+#if (NDIM == 3)
+                        *
+                        ((X[2] < X_side[2] ? X[2] - (X_side[2] - dx[2]) : (X_side[2] + dx[2]) - X[2]) / dx[2])
+#endif
+                        );
+                        const Index<NDIM> i(i_shift0 + i_cell(0),
+                                i_shift1 + i_cell(1)
+#if (NDIM == 3)
+                        ,
+                                i_shift2 + i_cell(2)
+#endif
+                        );
+                        const SideIndex<NDIM> i_s(i, axis, SideIndex<NDIM>::Lower);
+                        U[axis] += v(i_s) * wgt;
+                    }
+                }
+#if (NDIM == 3)
+            }
+#endif
+        }
+        return U;
+    } // linear_interp
+}
+
+    
 
 IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db,
         const int part)
@@ -382,23 +579,28 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         
         //  for surface integrals
         const std::vector<Real>& JxW = fe_elem->get_JxW();
-        const std::vector<libMesh::Point>& qp_normals = fe_elem->get_normals();
         const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
         
         // information about the AMR grid
         Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(d_level_number);
         const IntVector<NDIM>& ratio = level->getRatio();
         std::vector<Index<NDIM> > qp_indices; // vector of indices for the quadrature points
+        std::vector<Vector> qp_values; // vector of physical locations of the quadrature points
         
-        // build MeshFunction to figure out the physical locations of the quadrature
-        // points
+        // build MeshFunctions to figure out the physical locations of the quadrature
+        // points and velocities
         std::vector<unsigned int> vars; 
         for (int d = 0; d < NDIM; ++d) vars.push_back(d);
-        libMesh::MeshFunction mesh_fcn(*d_meter_systems[jj],
+        libMesh::MeshFunction disp_fcn(*d_meter_systems[jj],
                               *displacement_sys.solution,
                               displacement_sys.get_dof_map(),
                               vars);
-        mesh_fcn.init();
+        disp_fcn.init();
+        libMesh::MeshFunction vel_fcn(*d_meter_systems[jj],
+                              *velocity_sys.solution,
+                              velocity_sys.get_dof_map(),
+                              vars);
+        vel_fcn.init();
                 
         // loop over elements
         MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
@@ -412,33 +614,100 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
             // after displacement, and stores their indices.
             for (int qp = 0; qp < qp_points.size(); ++qp)
             {
-                std::vector<double> qp_temp; qp_temp.resize(NDIM); 
+                Vector qp_temp; qp_temp.resize(NDIM); 
                 DenseVector<double> disp_vec; disp_vec.resize(NDIM);
-                mesh_fcn(qp_points[qp], 0, disp_vec);
-                std::cout << "disp =  " << disp_vec(0) << " " << disp_vec(1) << " " << disp_vec(2) << "\n";
+                disp_fcn(qp_points[qp], 0, disp_vec);
                 // calculating physical location of the quadrature point
                 for (int d = 0; d < NDIM; ++d) qp_temp[d] = qp_points[qp](d) + disp_vec(d); 
                 const Index<NDIM> qp_index = IndexUtilities::getCellIndex(&qp_temp[0], hierarchy->getGridGeometry(), ratio); 
                 qp_indices.push_back(qp_index);
+                qp_values.push_back(qp_temp);
             }
-            
         }
         
         // loop over patches
+        std::vector<Vector> U_interp; U_interp.resize(qp_indices.size());
+        std::vector<double> P_interp; P_interp.resize(qp_indices.size());
         for (PatchLevel<NDIM>::Iterator p(level); p; p++)
         {
-            const Pointer<Patch<NDIM> > patch = level->getPatch(p());
+            Pointer<Patch<NDIM> > patch = level->getPatch(p());
             const Box<NDIM>& patch_box = patch->getBox();
+            const Index<NDIM>& patch_lower = patch_box.lower();
+            const Index<NDIM>& patch_upper = patch_box.upper();
+
+            const Pointer<CartesianPatchGeometry<NDIM> > pgeom = patch->getPatchGeometry();
+            const double* const x_lower = pgeom->getXLower();
+            const double* const x_upper = pgeom->getXUpper();
+            const double* const dx = pgeom->getDx();
+
+            Pointer<CellData<NDIM, double> > U_cc_data = patch->getPatchData(U_data_idx);
+            Pointer<SideData<NDIM, double> > U_sc_data = patch->getPatchData(U_data_idx);
+            Pointer<CellData<NDIM, double> > P_cc_data = patch->getPatchData(P_data_idx);
             
             // loop over indices for the quadrature points
             for(int qp = 0; qp < qp_indices.size(); ++qp)
             {
-                if( patch_box.contains(qp_indices[qp]) )
+                U_interp[qp].resize(NDIM);
+                const Index<NDIM> i = qp_indices[qp];
+                const Vector& X = qp_values[qp];
+                const Vector X_cell(x_lower[0] + dx[0] * (static_cast<double>(i(0) - patch_lower(0)) + 0.5),
+                        x_lower[1] + dx[1] * (static_cast<double>(i(1) - patch_lower(1)) + 0.5)
+#if (NDIM == 3)
+                                           ,
+                        x_lower[2] + dx[2] * (static_cast<double>(i(2) - patch_lower(2)) + 0.5)
+#endif
+                );
+                
+                // interpolate if quadrature point is in the patch box.
+                if( patch_box.contains( qp_indices[qp]) )
                 {
-                    
+                    if (U_cc_data)
+                    {
+                        U_interp[qp] = linear_interp<NDIM>(X, i, X_cell, *U_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
+                    }
+                    if (U_sc_data)
+                    {
+                        U_interp[qp] = linear_interp(X, i, X_cell, *U_sc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
+                    }
+                    if (P_cc_data)
+                    {
+                        P_interp[qp] = linear_interp(X, i, X_cell, *P_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
+                    } 
+                }
+            }
+        } 
+        
+        
+        // loop over elements again to compute mass flux and mean pressure
+        double Flux = 0.0;
+        el = d_meter_meshes[jj]->active_local_elements_begin();
+        for ( ; el != end_el; ++el)
+        {  
+            const Elem * elem = *el;
+            fe_elem->reinit(elem);
+             // compute normal vector to element
+            const libMesh::Point foo1 = *elem->node_ptr(1) - *elem->node_ptr(0);
+            const libMesh::Point foo2 = *elem->node_ptr(2) - *elem->node_ptr(1);
+            libMesh::Point foo3(foo1.cross(foo2));
+            const libMesh::Point normal = foo3.unit();
+            
+            // loop over quadrature points
+            for (int qp = 0; qp < qp_points.size(); ++qp)
+            {
+                for (int d = 0; d < NDIM; ++d)
+                {
+                    // contribution from Cartesian fluid velocity
+                    Flux += U_interp[qp][d] * normal(d) * JxW[qp];
+                    // correction from velocity of meter mesh
+                    //DenseVector<double> vel_vec; vel_vec.resize(NDIM);
+                    //vel_fcn(qp_points[qp], 0, vel_vec);
+                    //Flux -= vel_fcn()
                 }
             }
         }
+        
+        std::cout << "Flux = " << Flux << "\n";
+        
         
     } // loop over meters
     

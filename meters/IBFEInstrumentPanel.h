@@ -41,7 +41,7 @@ public:
     // update system data
     void
     updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
-                                          int meter_num);
+                     int meter_num);
     
     // read instrument data
     void
