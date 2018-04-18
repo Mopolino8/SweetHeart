@@ -35,8 +35,13 @@ public:
     void getFromInput(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> db);
     
     // initialize data
-    void initializeData(IBAMR::IBFEMethod* ib_method_ops,
-                        libMesh::Parallel::Communicator& comm_in);
+    void initializeHierarchyIndependentData(IBAMR::IBFEMethod* ib_method_ops,
+                                            libMesh::Parallel::Communicator& comm_in);
+    
+    void initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_method_ops,
+                                          Pointer<PatchHierarchy<NDIM> > hierarchy,
+                                          int timestep_num,
+                                          double data_time);
    
     // update system data
     void
@@ -44,18 +49,19 @@ public:
                      int meter_num);
     
     // read instrument data
-    void
-    readInstrumentData(int U_data_idx,
-                       int P_data_idx,
-                       IBAMR::IBFEMethod* ib_method_ops,
-                       SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
-                       int timestep_num,
-                       double data_time);
+    void readInstrumentData(int U_data_idx,
+                            int P_data_idx,
+                            IBAMR::IBFEMethod* ib_method_ops,
+                            SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
+                            int timestep_num,
+                            double data_time);
     
     // write out meshes and equation systems in Exodus file
-    void
-    outputExodus(int timestep,
-                 double loop_time);
+    void outputExodus(int timestep,
+                      double loop_time);
+    
+    // write out nodes
+    void outputNodes();
     
 private:
        

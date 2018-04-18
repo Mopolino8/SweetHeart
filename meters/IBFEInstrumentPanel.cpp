@@ -311,8 +311,8 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
 //**********************************************
 // initialize data
 //**********************************************
-void IBFEInstrumentPanel::initializeData(IBAMR::IBFEMethod* ib_method_ops,
-                                                        libMesh::Parallel::Communicator& comm_in)
+void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* ib_method_ops,
+                                                             libMesh::Parallel::Communicator& comm_in)
 {
     // get relevant things for corresponding part
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
@@ -415,14 +415,6 @@ void IBFEInstrumentPanel::initializeData(IBAMR::IBFEMethod* ib_method_ops,
         d_num_nodes[jj] = d_nodes[jj].size();
     }
     
-    /*std::ofstream stuff_stream;
-    stuff_stream.open("test_output.dat");
-    for (int dd = 0; dd < d_nodes[0].size(); ++dd)
-    {
-        stuff_stream << d_nodes[0][dd](0) << " " <<  d_nodes[0][dd](1) << " " <<  d_nodes[0][dd](2) << "\n";
-    }
-    stuff_stream.close();*/
-    
     // build the meshes
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
@@ -485,6 +477,17 @@ void IBFEInstrumentPanel::initializeData(IBAMR::IBFEMethod* ib_method_ops,
     }
     
 } // initializeData
+
+void
+IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_method_ops,
+                                                      const Pointer<PatchHierarchy<NDIM> > hierarchy,
+                                                      const int timestep_num,
+                                                      const double data_time)
+{
+        
+}
+
+
 
 //**********************************************
 // update system data
@@ -685,6 +688,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         {  
             const Elem * elem = *el;
             fe_elem->reinit(elem);
+            
              // compute normal vector to element
             const libMesh::Point foo1 = *elem->node_ptr(1) - *elem->node_ptr(0);
             const libMesh::Point foo2 = *elem->node_ptr(2) - *elem->node_ptr(1);
@@ -706,15 +710,12 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
             }
         }
         
-        std::cout << "Flux = " << Flux << "\n";
-        
-        
     } // loop over meters
     
 } // readInstrumentData
 
 //**********************************************
-// write out meshes
+// write out meshes to Exodus file
 //**********************************************
 void
 IBFEInstrumentPanel::outputExodus(const int timestep, 
@@ -727,7 +728,29 @@ IBFEInstrumentPanel::outputExodus(const int timestep,
         mesh_output << d_plot_directory_name << "/" << "" << d_meter_mesh_names[ii] << ".ex2";
         d_exodus_io[ii]->write_timestep(mesh_output.str(), *d_meter_systems[ii], timestep, loop_time);       
     }
-} // outputMeshes
+} // outputExodus
+
+//**********************************************
+// write out mesh nodes to data file
+//**********************************************
+void
+IBFEInstrumentPanel::outputNodes()
+{
+    for (int ii = 0; ii < d_num_meters; ++ii)
+    {
+        Utilities::recursiveMkdir(d_plot_directory_name);
+        std::ofstream stuff_stream;
+        std::ostringstream node_output;
+        node_output << d_plot_directory_name << "/" << "" << d_meter_mesh_names[ii] << "_nodes.dat";
+        stuff_stream.open(node_output);
+        for (int dd = 0; dd < d_nodes[0].size(); ++dd)
+        {
+            stuff_stream << d_nodes[0][dd](0) << " " <<  d_nodes[0][dd](1) << " " <<  d_nodes[0][dd](2) << "\n";
+        }
+        stuff_stream.close();
+      
+    }
+} // outputNodes
 
 //**********************************************
 // get data from input file
