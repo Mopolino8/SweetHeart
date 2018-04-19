@@ -282,7 +282,8 @@ int main(int argc, char** argv)
              
         // initialize IBFE instrumentation
         IBFEInstrumentPanel instrument(input_db, 0);
-        instrument.initializeData(ib_method_ops, init.comm());
+        instrument.initializeHierarchyIndependentData(ib_method_ops);
+        instrument.outputNodes();
           
         // Deallocate initialization objects.
         app_initializer.setNull();

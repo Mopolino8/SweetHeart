@@ -279,14 +279,16 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_part(part),
         d_nodes(),
         d_node_dof_IDs(),
+        d_quad_order(),
+        d_num_quad_points(),
         d_num_nodes(),
         d_U_dof_idx(),        
         d_dX_dof_idx(),
         d_nodeset_IDs(),
-        d_level_number(),
         d_meter_meshes(),
         d_meter_systems(),
         d_meter_mesh_names(),
+        d_quad_point_map(),
         d_flow_values(),
         d_mean_pres_values(),
         d_point_pres_values(),
@@ -311,18 +313,14 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
 //**********************************************
 // initialize data
 //**********************************************
-void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                                             libMesh::Parallel::Communicator& comm_in)
+void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* ib_method_ops)
 {
     // get relevant things for corresponding part
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
     const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
     const MeshBase* mesh = &equation_systems->get_mesh();
     const BoundaryInfo& boundary_info = *mesh->boundary_info;
-    
-    // assign AMR mesh level number for the meter meshes
-    // to be the same as the parent mesh
-    d_level_number = fe_data_manager->getLevelNumber();
+    const libMesh::Parallel::Communicator& comm_in = mesh->comm();    
     
     // get equation systems from the mesh we will need.
     const System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
@@ -340,6 +338,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
     
     // resize members and local variables
     d_num_meters = d_nodeset_IDs.size();
+    d_num_quad_points.resize(d_num_meters);
     d_U_dof_idx.resize(d_num_meters);
     d_dX_dof_idx.resize(d_num_meters);
     d_node_dof_IDs.resize(d_num_meters);
@@ -457,6 +456,18 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
         displacement_sys.add_variable ("dX_2", static_cast<Order>(1), LAGRANGE);
         d_meter_systems[jj]->init();
     }
+    
+    // store the number of quadrature points for each meter mesh
+    for (int jj = 0; jj < d_num_meters; ++jj)
+    {
+        const LinearImplicitSystem& displacement_sys =
+        d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+        FEType fe_type = displacement_sys.variable_type(0);
+        UniquePtr<FEBase> fe_elem(FEBase::build(NDIM-1, fe_type));
+        QGauss qrule(NDIM-1, d_quad_order);
+        fe_elem->attach_quadrature_rule(&qrule);
+        d_num_quad_points[jj] = d_meter_meshes[jj]->n_elem() * fe_elem->get_xyz().size();
+    }
   
     // store dof indices for the velocity and displacement systems that we will use later
     for (int jj = 0; jj < d_num_meters; ++jj)
@@ -475,6 +486,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
             d_U_dof_idx[jj].push_back(U_dof_index);
         }
     }
+    d_initialized = true;
     
 } // initializeData
 
@@ -484,7 +496,149 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
                                                       const int timestep_num,
                                                       const double data_time)
 {
+    if (!d_initialized)
+    {
+        initializeHierarchyIndependentData(ib_method_ops);
+    }
+    if (d_num_meters == 0) return;
+    
+    // loop over meters and update system data 
+    for (int jj = 0; jj < d_num_meters; ++jj)
+    {
+        // update FE system data for meter_mesh
+        updateSystemData(ib_method_ops, jj);
+    }
+    
+    // get info about levels in AMR mesh
+    const int coarsest_ln = 0;
+    const int finest_ln = hierarchy->getFinestLevelNumber();
+    
+     // Determine the finest grid spacing in the Cartesian grid hierarchy.
+    Pointer<CartesianGridGeometry<NDIM> > grid_geom = hierarchy->getGridGeometry();
+    const double* const domainXLower = grid_geom->getXLower();
+    const double* const domainXUpper = grid_geom->getXUpper();
+    const double* const dx_coarsest = grid_geom->getDx();
+    TBOX_ASSERT(grid_geom->getDomainIsSingleBox());
+    const Box<NDIM> domain_box = grid_geom->getPhysicalDomain()[0];
+    
+    // reset the quad point maps
+    d_quad_point_map.clear();
+    d_quad_point_map.resize(finest_ln + 1);
+    // loop over levels and assign each quadrature point to one level
+    for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
+    {
+        Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(ln);
+        const IntVector<NDIM>& ratio = level->getRatio();
+        const Box<NDIM> domain_box_level = Box<NDIM>::refine(domain_box, ratio);
+        const Index<NDIM>& domain_box_level_lower = domain_box_level.lower();
+        const Index<NDIM>& domain_box_level_upper = domain_box_level.upper();
+        boost::array<double, NDIM> dx;
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            dx[d] = dx_coarsest[d] / static_cast<double>(ratio(d));
+        }
         
+        Pointer<PatchLevel<NDIM> > finer_level =
+                (ln < finest_ln ? hierarchy->getPatchLevel(ln + 1) : Pointer<BasePatchLevel<NDIM> >(NULL));
+        const IntVector<NDIM>& finer_ratio = (ln < finest_ln ? finer_level->getRatio() : IntVector<NDIM>(1));
+        const Box<NDIM> finer_domain_box_level = Box<NDIM>::refine(domain_box, finer_ratio);
+        const Index<NDIM>& finer_domain_box_level_lower = finer_domain_box_level.lower();
+        const Index<NDIM>& finer_domain_box_level_upper = finer_domain_box_level.upper();
+        boost::array<double, NDIM> finer_dx;
+        for (unsigned int d = 0; d < NDIM; ++d)
+        {
+            finer_dx[d] = dx_coarsest[d] / static_cast<double>(finer_ratio(d));
+        }
+        
+        for (unsigned int jj = 0; jj < d_num_meters; ++jj)
+        {
+            // get displacement and velocity systems for meter mesh
+            const LinearImplicitSystem& velocity_sys =
+            d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
+            
+            const LinearImplicitSystem& displacement_sys =
+            d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+            
+            FEType fe_type = velocity_sys.variable_type(0);
+            
+            // set up FE objects
+            UniquePtr<FEBase> fe_elem(FEBase::build(NDIM-1, fe_type));
+            QGauss qrule(NDIM-1, fe_type.default_quadrature_order());
+            fe_elem->attach_quadrature_rule(&qrule);
+            
+            //  for surface integrals
+            const std::vector<Real>& JxW = fe_elem->get_JxW();
+            const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
+            
+            // build MeshFunctions to figure out the physical locations of the quadrature
+            // points and velocities
+            std::vector<unsigned int> vars; 
+            for (int d = 0; d < NDIM; ++d) vars.push_back(d);
+            libMesh::MeshFunction disp_fcn(*d_meter_systems[jj],
+                    *displacement_sys.solution,
+                    displacement_sys.get_dof_map(),
+                    vars);
+            disp_fcn.init();
+            libMesh::MeshFunction vel_fcn(*d_meter_systems[jj],
+                    *velocity_sys.solution,
+                    velocity_sys.get_dof_map(),
+                    vars);
+            vel_fcn.init();
+            
+            // loop over elements in meter mesh
+            MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
+            const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
+            for ( ; el != end_el; ++el)
+            {  
+                const Elem * elem = *el;
+                fe_elem->reinit(elem);
+                
+                // compute normal vector to element
+                const libMesh::Point foo1 = *elem->node_ptr(1) - *elem->node_ptr(0);
+                const libMesh::Point foo2 = *elem->node_ptr(2) - *elem->node_ptr(1);
+                libMesh::Point foo3 = foo1.cross(foo2).unit();
+                Vector normal;
+                for (int d = 0; d < NDIM; ++d) normal[d] = foo3(d);
+                
+                // loop over quadrature points, compute their physical locations
+                // after displacement, and stores their indices.
+                for (int qp = 0; qp < qp_points.size(); ++qp)
+                {
+                    Vector qp_temp; qp_temp.resize(NDIM); 
+                    DenseVector<double> disp_vec; disp_vec.resize(NDIM);
+                    disp_fcn(qp_points[qp], 0, disp_vec);
+                    // calculating physical location of the quadrature point
+                    for (int d = 0; d < NDIM; ++d) qp_temp[d] = qp_points[qp](d) + disp_vec(d); 
+                    
+                    const Index<NDIM> i = IndexUtilities::getCellIndex(&qp_temp[0],
+                            domainXLower,
+                            domainXUpper, 
+                            dx.data(), 
+                            domain_box_level_lower, 
+                            domain_box_level_upper);
+                    
+                    const Index<NDIM> finer_i = IndexUtilities::getCellIndex(&qp_temp[0],
+                            domainXLower,
+                            domainXUpper,
+                            finer_dx.data(),
+                            finer_domain_box_level_lower,
+                            finer_domain_box_level_upper);
+
+                    if (level->getBoxes().contains(i) &&
+                            (ln == finest_ln || !finer_level->getBoxes().contains(finer_i)))
+                    {
+                        QuadPointStruct p;
+                        p.meter_num = jj;
+                        p.qp_xyz_current = qp_temp;
+                        p.JxW = JxW[qp];
+                        p.normal = normal;
+                        d_quad_point_map[ln].insert(std::make_pair(i, p));
+                    }
+                }
+            }
+        }
+    }
+    
 }
 
 
@@ -585,7 +739,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
         
         // information about the AMR grid
-        Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(d_level_number);
+        /*Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(d_level_number);
         const IntVector<NDIM>& ratio = level->getRatio();
         std::vector<Index<NDIM> > qp_indices; // vector of indices for the quadrature points
         std::vector<Vector> qp_values; // vector of physical locations of the quadrature points
@@ -709,7 +863,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                 }
             }
         }
-        
+        */
     } // loop over meters
     
 } // readInstrumentData
@@ -742,7 +896,7 @@ IBFEInstrumentPanel::outputNodes()
         std::ofstream stuff_stream;
         std::ostringstream node_output;
         node_output << d_plot_directory_name << "/" << "" << d_meter_mesh_names[ii] << "_nodes.dat";
-        stuff_stream.open(node_output);
+        stuff_stream.open(node_output.str().c_str());
         for (int dd = 0; dd < d_nodes[0].size(); ++dd)
         {
             stuff_stream << d_nodes[0][dd](0) << " " <<  d_nodes[0][dd](1) << " " <<  d_nodes[0][dd](2) << "\n";

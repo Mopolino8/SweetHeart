@@ -35,11 +35,10 @@ public:
     void getFromInput(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> db);
     
     // initialize data
-    void initializeHierarchyIndependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                            libMesh::Parallel::Communicator& comm_in);
+    void initializeHierarchyIndependentData(IBAMR::IBFEMethod* ib_method_ops);
     
     void initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                          Pointer<PatchHierarchy<NDIM> > hierarchy,
+                                          SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
                                           int timestep_num,
                                           double data_time);
    
@@ -66,8 +65,10 @@ public:
 private:
        
     unsigned int d_num_meters;
+    libMesh::Order d_quad_order;
+    std::vector<int> d_num_quad_points;
     unsigned int d_part;
-    int d_level_number;
+    bool d_initialized;
     std::vector<int> d_num_nodes;
     std::vector<std::vector<std::vector<libMesh::dof_id_type> > > d_U_dof_idx;
     std::vector<std::vector<std::vector<libMesh::dof_id_type> > > d_dX_dof_idx;
@@ -80,6 +81,35 @@ private:
     std::vector<double> d_flow_values, d_mean_pres_values, d_point_pres_values;
     std::string d_plot_directory_name;
     SAMRAI::tbox::Array<int> d_nodeset_IDs;
+    
+    
+    struct IndexFortranOrder : public std::binary_function<SAMRAI::hier::Index<NDIM>, SAMRAI::hier::Index<NDIM>, bool>
+    {
+        inline bool operator()(const SAMRAI::hier::Index<NDIM>& lhs, const SAMRAI::hier::Index<NDIM>& rhs) const
+        {
+            return (lhs(0) < rhs(0)
+#if (NDIM > 1)
+                    ||
+                    (lhs(0) == rhs(0) && lhs(1) < rhs(1))
+#if (NDIM > 2)
+                    ||
+                    (lhs(0) == rhs(0) && lhs(1) == rhs(1) && lhs(2) < rhs(2))
+#endif
+#endif
+                        );
+        } // operator()
+    };
+
+    struct QuadPointStruct
+    {
+        int meter_num; // meter ID
+        const IBTK::Vector* normal; // normal vector at point qp
+        const IBTK::Vector* qp_xyz_current; // physical location of qp
+        double JxW; // Jacobian multiplied by the quadrature weight
+    };
+
+    typedef std::multimap<SAMRAI::hier::Index<NDIM>, QuadPointStruct, IndexFortranOrder> QuadPointMap;
+    std::vector<QuadPointMap> d_quad_point_map;
 
 };
 
