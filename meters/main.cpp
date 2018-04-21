@@ -444,6 +444,8 @@ int main(int argc, char** argv)
                 if (!level->checkAllocated(u_copy_idx)) level->allocatePatchData(u_copy_idx);
             }
             
+            instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy, iteration_num, loop_time);
+            std::cout << "\n";
             instrument.readInstrumentData(u_copy_idx, p_copy_idx, ib_method_ops, patch_hierarchy, iteration_num, loop_time);
             
             //************************************************

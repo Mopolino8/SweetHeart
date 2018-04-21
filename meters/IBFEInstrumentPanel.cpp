@@ -279,7 +279,7 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_part(part),
         d_nodes(),
         d_node_dof_IDs(),
-        d_quad_order(),
+        d_quad_order(SECOND),
         d_num_quad_points(),
         d_num_nodes(),
         d_U_dof_idx(),        
@@ -552,38 +552,22 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
         
         for (unsigned int jj = 0; jj < d_num_meters; ++jj)
         {
-            // get displacement and velocity systems for meter mesh
-            const LinearImplicitSystem& velocity_sys =
-            d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
-            
             const LinearImplicitSystem& displacement_sys =
             d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
-            
-            FEType fe_type = velocity_sys.variable_type(0);
+            const DofMap& dof_map = displacement_sys.get_dof_map();
+            FEType fe_type = displacement_sys.variable_type(0);
             
             // set up FE objects
             UniquePtr<FEBase> fe_elem(FEBase::build(NDIM-1, fe_type));
             QGauss qrule(NDIM-1, fe_type.default_quadrature_order());
             fe_elem->attach_quadrature_rule(&qrule);
             
-            //  for surface integrals
+            //  for evaluating the displacement system
             const std::vector<Real>& JxW = fe_elem->get_JxW();
+            const std::vector<std::vector<Real> >& phi = fe_elem->get_phi();
             const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
-            
-            // build MeshFunctions to figure out the physical locations of the quadrature
-            // points and velocities
-            std::vector<unsigned int> vars; 
-            for (int d = 0; d < NDIM; ++d) vars.push_back(d);
-            libMesh::MeshFunction disp_fcn(*d_meter_systems[jj],
-                    *displacement_sys.solution,
-                    displacement_sys.get_dof_map(),
-                    vars);
-            disp_fcn.init();
-            libMesh::MeshFunction vel_fcn(*d_meter_systems[jj],
-                    *velocity_sys.solution,
-                    velocity_sys.get_dof_map(),
-                    vars);
-            vel_fcn.init();
+            std::vector<dof_id_type> dof_indices;
+            DenseMatrix<double> disp_coords;
             
             // loop over elements in meter mesh
             MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
@@ -592,7 +576,18 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
             {  
                 const Elem * elem = *el;
                 fe_elem->reinit(elem);
-                
+              
+                // get dofs for displacement system and store in dense matrix
+                disp_coords.resize( NDIM, phi.size() );
+                for (int d = 0; d < NDIM; ++d) // here d is the "variable number"
+                { 
+                    dof_map.dof_indices (elem, dof_indices, d);
+                    for (int nn = 0; nn < dof_indices.size(); ++nn)
+                    {
+                        disp_coords(d,nn) =  (*displacement_sys.solution)(dof_indices[nn]);
+                    }
+                }
+
                 // compute normal vector to element
                 const libMesh::Point foo1 = *elem->node_ptr(1) - *elem->node_ptr(0);
                 const libMesh::Point foo2 = *elem->node_ptr(2) - *elem->node_ptr(1);
@@ -606,9 +601,18 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
                 {
                     Vector qp_temp; qp_temp.resize(NDIM); 
                     DenseVector<double> disp_vec; disp_vec.resize(NDIM);
-                    disp_fcn(qp_points[qp], 0, disp_vec);
-                    // calculating physical location of the quadrature point
-                    for (int d = 0; d < NDIM; ++d) qp_temp[d] = qp_points[qp](d) + disp_vec(d); 
+                    //disp_fcn(qp_points[qp], 0, disp_vec);
+                    for (int d = 0; d < NDIM; ++d)
+                    {
+                        for (int nn = 0; nn < phi.size(); ++nn)
+                        {
+                            disp_vec(d) += disp_coords(d,nn) * phi[nn][qp];
+                        }
+                        // calculating physical location of the quadrature point
+                        qp_temp[d] = qp_points[qp](d) + disp_vec(d); 
+                    }
+                    
+                    std::cout << "disp_vec = " << disp_vec(0) << " " << disp_vec(1) << " " << disp_vec(2) << "\n" ;
                     
                     const Index<NDIM> i = IndexUtilities::getCellIndex(&qp_temp[0],
                             domainXLower,
@@ -629,9 +633,9 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
                     {
                         QuadPointStruct p;
                         p.meter_num = jj;
-                        p.qp_xyz_current = qp_temp;
+                        p.qp_xyz_current = &qp_temp;
                         p.JxW = JxW[qp];
-                        p.normal = normal;
+                        p.normal = &normal;
                         d_quad_point_map[ln].insert(std::make_pair(i, p));
                     }
                 }
@@ -656,10 +660,8 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
     const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
     const System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
-    const unsigned int dX_sys_num = dX_system.number();
     NumericVector<double>& dX_coords = *dX_system.solution;
     const System& U_system = equation_systems->get_system(IBFEMethod::VELOCITY_SYSTEM_NAME);
-    const unsigned int U_sys_num = U_system.number();
     NumericVector<double>& U_coords = *U_system.solution;
     
     // get displacement and velocity systems for meter mesh
