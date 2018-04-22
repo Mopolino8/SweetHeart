@@ -290,18 +290,38 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_meter_mesh_names(),
         d_quad_point_map(),
         d_flow_values(),
-        d_mean_pres_values(),
-        d_point_pres_values(),
+        d_mean_pressure_values(),
+        d_flux_stream(),
+        d_mean_pressure_stream(),
         d_plot_directory_name(NDIM == 2 ? "viz_inst2d" : "viz_inst3d")
 {
     // get input data
     IBFEInstrumentPanel::getFromInput(input_db);
+    
+    // set up file streams
+      // Close the log file stream.
+    if (SAMRAI_MPI::getRank() == 0)
+    {
+        std::ostringstream press_output;
+        std::ostringstream flux_output;
+        press_output << d_plot_directory_name << "/" << "" << "mean_pressure.dat";
+        d_mean_pressure_stream.open(press_output.str().c_str());
+        flux_output << d_plot_directory_name << "/" << "" << "flux.dat";
+        d_flux_stream.open(flux_output.str().c_str());
+    }
+    
 }
 
 
 IBFEInstrumentPanel::~IBFEInstrumentPanel() 
 {
-    // delete vector of pointers to mesh objects
+      // Close the log file stream.
+    if (SAMRAI_MPI::getRank() == 0)
+    {
+        d_mean_pressure_stream.close();
+        d_flux_stream.close();
+    }
+    // delete vectors of pointers
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
         delete d_exodus_io[ii];
@@ -344,6 +364,8 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
     d_node_dof_IDs.resize(d_num_meters);
     d_nodes.resize(d_num_meters);
     d_num_nodes.resize(d_num_meters);
+    d_mean_pressure_values.resize(d_num_meters);
+    d_flow_values.resize(d_num_meters);
     temp_node_dof_IDs.resize(d_num_meters);
     temp_nodes.resize(d_num_meters);
     meter_centroids.resize(d_num_meters);
@@ -600,19 +622,17 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
                 for (int qp = 0; qp < qp_points.size(); ++qp)
                 {
                     Vector qp_temp; qp_temp.resize(NDIM); 
-                    DenseVector<double> disp_vec; disp_vec.resize(NDIM);
-                    //disp_fcn(qp_points[qp], 0, disp_vec);
+                    double disp_comp = 0.0;
                     for (int d = 0; d < NDIM; ++d)
                     {
+                        disp_comp = 0.0;
                         for (int nn = 0; nn < phi.size(); ++nn)
                         {
-                            disp_vec(d) += disp_coords(d,nn) * phi[nn][qp];
+                            disp_comp += disp_coords(d,nn) * phi[nn][qp];
                         }
                         // calculating physical location of the quadrature point
-                        qp_temp[d] = qp_points[qp](d) + disp_vec(d); 
+                        qp_temp[d] = qp_points[qp](d) + disp_comp; 
                     }
-                    
-                    std::cout << "disp_vec = " << disp_vec(0) << " " << disp_vec(1) << " " << disp_vec(2) << "\n" ;
                     
                     const Index<NDIM> i = IndexUtilities::getCellIndex(&qp_temp[0],
                             domainXLower,
@@ -644,6 +664,244 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
     }
     
 }
+
+//**********************************************
+// read instrument data
+//**********************************************
+void
+IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
+                                        const int P_data_idx,
+                                        const SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
+                                        const int timestep_num,
+                                        const double data_time)
+{
+    if (d_num_meters == 0) return;
+    
+    const int coarsest_ln = 0;
+    const int finest_ln = hierarchy->getFinestLevelNumber();
+       
+    // Reset the instrument values.
+    std::fill(d_flow_values.begin(), d_flow_values.end(), 0.0);
+    std::fill(d_mean_pressure_values.begin(), d_mean_pressure_values.end(), 0.0);
+    std::vector<double> A(d_num_meters, 0.0);
+    
+    // Compute the local contributions to the flux of U through the flow meter,
+    // the average value of P in the flow meter, and the pointwise value of P at
+    // the centroid of the meter.
+    for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
+    {
+        Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(ln);
+        for (PatchLevel<NDIM>::Iterator p(level); p; p++)
+        {
+            Pointer<Patch<NDIM> > patch = level->getPatch(p());
+            const Box<NDIM>& patch_box = patch->getBox();
+            const Index<NDIM>& patch_lower = patch_box.lower();
+            const Index<NDIM>& patch_upper = patch_box.upper();
+            
+            const Pointer<CartesianPatchGeometry<NDIM> > pgeom = patch->getPatchGeometry();
+            const double* const x_lower = pgeom->getXLower();
+            const double* const x_upper = pgeom->getXUpper();
+            const double* const dx = pgeom->getDx();
+            
+            Pointer<CellData<NDIM, double> > U_cc_data = patch->getPatchData(U_data_idx);
+            Pointer<SideData<NDIM, double> > U_sc_data = patch->getPatchData(U_data_idx);
+            Pointer<CellData<NDIM, double> > P_cc_data = patch->getPatchData(P_data_idx);
+            
+            for (Box<NDIM>::Iterator b(patch_box); b; b++)
+            {
+                const Index<NDIM>& i = b();
+                std::pair<QuadPointMap::const_iterator, QuadPointMap::const_iterator> qp_range =
+                        d_quad_point_map[ln].equal_range(i);
+                if (qp_range.first != qp_range.second)
+                {
+                    const Point X_cell(x_lower[0] + dx[0] * (static_cast<double>(i(0) - patch_lower(0)) + 0.5),
+                            x_lower[1] + dx[1] * (static_cast<double>(i(1) - patch_lower(1)) + 0.5)
+#if (NDIM == 3)
+                    ,
+                            x_lower[2] + dx[2] * (static_cast<double>(i(2) - patch_lower(2)) + 0.5)
+#endif
+                    );
+                    if (U_cc_data)
+                    {
+                        for (QuadPointMap::const_iterator it = qp_range.first; it != qp_range.second; ++it)
+                        {
+                            const int& meter_num = it->second.meter_num;
+                            const double JxW = *(it->second.JxW);
+                            const Vector& X = *(it->second.qp_xyz_current);
+                            const Vector& normal = *(it->second.normal);
+                            const Vector U = linear_interp<NDIM>(
+                            X, i, X_cell, *U_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
+                            d_flow_values[meter_num] += ( U.dot(normal) ) * JxW;
+                        }
+                    }
+                    if (U_sc_data)
+                    {
+                        for (QuadPointMap::const_iterator it = qp_range.first; it != qp_range.second; ++it)
+                        {
+                            const int& meter_num = it->second.meter_num;
+                            const double JxW = *(it->second.JxW);
+                            const Vector& X = *(it->second.qp_xyz_current);
+                            const Vector& normal = *(it->second.normal);
+                            const Vector U =
+                            linear_interp(X, i, X_cell, *U_sc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
+                            d_flow_values[meter_num] += ( U.dot(normal) ) * JxW;
+                        }
+                    }
+                    if (P_cc_data)
+                    {
+                        for (QuadPointMap::const_iterator it = qp_range.first; it != qp_range.second; ++it)
+                        {
+                            const int& meter_num = it->second.meter_num;
+                            const double JxW = *(it->second.JxW);
+                            const Vector& X = *(it->second.qp_xyz_current);
+                            double P =
+                            linear_interp(X, i, X_cell, *P_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
+                            d_mean_pressure_values[meter_num] += P * JxW;
+                            A[meter_num] += JxW;
+                        }
+                    }
+                }
+               
+            }
+        }
+    }
+    
+    // Synchronize the values across all processes.
+    SAMRAI_MPI::sumReduction(&d_flow_values[0], d_num_meters);
+    SAMRAI_MPI::sumReduction(&d_mean_pressure_values[0], d_num_meters);
+    SAMRAI_MPI::sumReduction(&A[0], d_num_meters);
+    
+    // Normalize the mean pressure.
+    for (unsigned int jj = 0; jj < d_num_meters; ++jj)
+    {
+        d_mean_pressure_values[jj] /= A[jj];
+    }
+    
+    // we need to compute the flow correction by calculating the contribution
+    // from the velocity of each meter mesh.
+    for (int jj = 0; jj < d_num_meters; ++jj)
+    {
+        // get displacement and velocity systems for meter mesh
+        const LinearImplicitSystem& velocity_sys =
+        d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
+        const DofMap& dof_map = velocity_sys.get_dof_map();
+        FEType fe_type = velocity_sys.variable_type(0);
+        
+        // set up FE objects
+        UniquePtr<FEBase> fe_elem(FEBase::build(NDIM-1, fe_type));
+        QGauss qrule(NDIM-1, fe_type.default_quadrature_order());
+        fe_elem->attach_quadrature_rule(&qrule);
+        
+        //  for evaluating the velocity system
+        const std::vector<Real>& JxW = fe_elem->get_JxW();
+        const std::vector<std::vector<Real> >& phi = fe_elem->get_phi();
+        const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
+        std::vector<dof_id_type> dof_indices;
+        DenseMatrix<double> vel_coords;
+        
+        // loop over elements again to compute mass flux and mean pressure
+        double flux_correction = 0.0;
+        MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
+        const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
+        for ( ; el != end_el; ++el)
+        {  
+            const Elem * elem = *el;
+            fe_elem->reinit(elem);
+            
+            // get dofs for displacement system and store in dense matrix
+            vel_coords.resize( NDIM, phi.size() );
+            for (int d = 0; d < NDIM; ++d) // here d is the "variable number"
+            { 
+                dof_map.dof_indices (elem, dof_indices, d);
+                for (int nn = 0; nn < dof_indices.size(); ++nn)
+                {
+                    vel_coords(d,nn) =  (*velocity_sys.solution)(dof_indices[nn]);
+                }
+            }
+            
+            // compute normal vector to element
+            const libMesh::Point foo1 = *elem->node_ptr(1) - *elem->node_ptr(0);
+            const libMesh::Point foo2 = *elem->node_ptr(2) - *elem->node_ptr(1);
+            const libMesh::Point normal = (foo1.cross(foo2)).unit();
+            
+            // loop over quadrature points
+            double vel_comp;
+            for (int qp = 0; qp < qp_points.size(); ++qp)
+            {
+                for (int d = 0; d < NDIM; ++d)
+                {
+                    vel_comp = 0.0;
+                    for (int nn = 0; nn < phi.size(); ++nn)
+                    {
+                        vel_comp += vel_coords(d,nn) * phi[nn][qp];
+                    }
+                    flux_correction += vel_comp * normal(d) * JxW[qp];
+                }         
+            }
+        }
+        
+        d_flow_values[jj] -= flux_correction;
+        
+    } // loop over meters
+    
+    // write data
+    outputData(timestep_num, data_time);
+    
+} // readInstrumentData
+
+//**********************************************
+// write out meshes to Exodus file
+//**********************************************
+void
+IBFEInstrumentPanel::outputExodus(const int timestep, 
+                                  const double loop_time)
+{
+    for (int ii = 0; ii < d_num_meters; ++ii)
+    {
+        if(timestep == 1) Utilities::recursiveMkdir(d_plot_directory_name);
+        std::ostringstream mesh_output;
+        mesh_output << d_plot_directory_name << "/" << "" << d_meter_mesh_names[ii] << ".ex2";
+        d_exodus_io[ii]->write_timestep(mesh_output.str(), *d_meter_systems[ii], timestep, loop_time);       
+    }
+} // outputExodus
+
+//**********************************************
+// write out mesh nodes to data file
+//**********************************************
+void
+IBFEInstrumentPanel::outputNodes()
+{
+    for (int ii = 0; ii < d_num_meters; ++ii)
+    {
+        std::ofstream stuff_stream;
+        std::ostringstream node_output;
+        node_output << d_plot_directory_name << "/" << "" << d_meter_mesh_names[ii] << "_nodes.dat";
+        if( SAMRAI_MPI::getRank() == 0 ) 
+        {
+            stuff_stream.open(node_output.str().c_str());
+            for (int dd = 0; dd < d_nodes[0].size(); ++dd)
+            {
+                stuff_stream << d_nodes[0][dd](0) << " " <<  d_nodes[0][dd](1) << " " <<  d_nodes[0][dd](2) << "\n";
+            }
+            stuff_stream.close();
+        }
+      
+    }
+} // outputNodes
+
+//**********************************************
+// get data from input file
+//**********************************************
+void
+IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
+{
+#if !defined(NDEBUG)
+    TBOX_ASSERT(db);
+#endif
+    if (db->keyExists("plot_directory_name")) d_plot_directory_name = db->getString("plot_directory_name");
+    if (db->keyExists("nodeset_IDs")) d_nodeset_IDs = db->getIntegerArray("nodeset_IDs");
+    return;
+} // getFromInput
 
 
 
@@ -701,226 +959,39 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
         }
     }
     
-}
+} // updateSystemData
 
-//**********************************************
-// read instrument data
-//**********************************************
+
 void
-IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
-                                        const int P_data_idx,
-                                        IBAMR::IBFEMethod* ib_method_ops,
-                                        const SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
-                                        const int timestep_num,
-                                        const double data_time)
+IBFEInstrumentPanel::outputData(const int timestep_num,
+                                const double data_time)
 {
-    
-    // loop over meter meshes
-    for (int jj = 0; jj < d_num_meters; ++jj)
-    {
-       
-        
-        // get displacement and velocity systems for meter mesh
-        const LinearImplicitSystem& velocity_sys =
-        d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
-        
-        const LinearImplicitSystem& displacement_sys =
-        d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
-        
-        FEType fe_type = velocity_sys.variable_type(0);
-        int count_qp = 0.0;    
-        
-        // set up FE objects
-        UniquePtr<FEBase> fe_elem(FEBase::build(NDIM-1, fe_type));
-        QGauss qrule(NDIM-1, fe_type.default_quadrature_order());
-        fe_elem->attach_quadrature_rule(&qrule);
-        
-        //  for surface integrals
-        const std::vector<Real>& JxW = fe_elem->get_JxW();
-        const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
-        
-        // information about the AMR grid
-        /*Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(d_level_number);
-        const IntVector<NDIM>& ratio = level->getRatio();
-        std::vector<Index<NDIM> > qp_indices; // vector of indices for the quadrature points
-        std::vector<Vector> qp_values; // vector of physical locations of the quadrature points
-        
-        // build MeshFunctions to figure out the physical locations of the quadrature
-        // points and velocities
-        std::vector<unsigned int> vars; 
-        for (int d = 0; d < NDIM; ++d) vars.push_back(d);
-        libMesh::MeshFunction disp_fcn(*d_meter_systems[jj],
-                              *displacement_sys.solution,
-                              displacement_sys.get_dof_map(),
-                              vars);
-        disp_fcn.init();
-        libMesh::MeshFunction vel_fcn(*d_meter_systems[jj],
-                              *velocity_sys.solution,
-                              velocity_sys.get_dof_map(),
-                              vars);
-        vel_fcn.init();
-                
-        // loop over elements
-        MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
-        const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
-        for ( ; el != end_el; ++el)
-        {  
-            const Elem * elem = *el;
-            fe_elem->reinit(elem);
-            
-            // loop over quadrature points, compute their physical locations
-            // after displacement, and stores their indices.
-            for (int qp = 0; qp < qp_points.size(); ++qp)
-            {
-                Vector qp_temp; qp_temp.resize(NDIM); 
-                DenseVector<double> disp_vec; disp_vec.resize(NDIM);
-                disp_fcn(qp_points[qp], 0, disp_vec);
-                // calculating physical location of the quadrature point
-                for (int d = 0; d < NDIM; ++d) qp_temp[d] = qp_points[qp](d) + disp_vec(d); 
-                const Index<NDIM> qp_index = IndexUtilities::getCellIndex(&qp_temp[0], hierarchy->getGridGeometry(), ratio); 
-                qp_indices.push_back(qp_index);
-                qp_values.push_back(qp_temp);
-            }
-        }
-        
-        // loop over patches
-        std::vector<Vector> U_interp; U_interp.resize(qp_indices.size());
-        std::vector<double> P_interp; P_interp.resize(qp_indices.size());
-        for (PatchLevel<NDIM>::Iterator p(level); p; p++)
-        {
-            Pointer<Patch<NDIM> > patch = level->getPatch(p());
-            const Box<NDIM>& patch_box = patch->getBox();
-            const Index<NDIM>& patch_lower = patch_box.lower();
-            const Index<NDIM>& patch_upper = patch_box.upper();
-
-            const Pointer<CartesianPatchGeometry<NDIM> > pgeom = patch->getPatchGeometry();
-            const double* const x_lower = pgeom->getXLower();
-            const double* const x_upper = pgeom->getXUpper();
-            const double* const dx = pgeom->getDx();
-
-            Pointer<CellData<NDIM, double> > U_cc_data = patch->getPatchData(U_data_idx);
-            Pointer<SideData<NDIM, double> > U_sc_data = patch->getPatchData(U_data_idx);
-            Pointer<CellData<NDIM, double> > P_cc_data = patch->getPatchData(P_data_idx);
-            
-            // loop over indices for the quadrature points
-            for(int qp = 0; qp < qp_indices.size(); ++qp)
-            {
-                U_interp[qp].resize(NDIM);
-                const Index<NDIM> i = qp_indices[qp];
-                const Vector& X = qp_values[qp];
-                const Vector X_cell(x_lower[0] + dx[0] * (static_cast<double>(i(0) - patch_lower(0)) + 0.5),
-                        x_lower[1] + dx[1] * (static_cast<double>(i(1) - patch_lower(1)) + 0.5)
-#if (NDIM == 3)
-                                           ,
-                        x_lower[2] + dx[2] * (static_cast<double>(i(2) - patch_lower(2)) + 0.5)
-#endif
-                );
-                
-                // interpolate if quadrature point is in the patch box.
-                if( patch_box.contains( qp_indices[qp]) )
-                {
-                    if (U_cc_data)
-                    {
-                        U_interp[qp] = linear_interp<NDIM>(X, i, X_cell, *U_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
-                    }
-                    if (U_sc_data)
-                    {
-                        U_interp[qp] = linear_interp(X, i, X_cell, *U_sc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
-                    }
-                    if (P_cc_data)
-                    {
-                        P_interp[qp] = linear_interp(X, i, X_cell, *P_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
-                    } 
-                }
-            }
-        } 
-        
-        
-        // loop over elements again to compute mass flux and mean pressure
-        double Flux = 0.0;
-        el = d_meter_meshes[jj]->active_local_elements_begin();
-        for ( ; el != end_el; ++el)
-        {  
-            const Elem * elem = *el;
-            fe_elem->reinit(elem);
-            
-             // compute normal vector to element
-            const libMesh::Point foo1 = *elem->node_ptr(1) - *elem->node_ptr(0);
-            const libMesh::Point foo2 = *elem->node_ptr(2) - *elem->node_ptr(1);
-            libMesh::Point foo3(foo1.cross(foo2));
-            const libMesh::Point normal = foo3.unit();
-            
-            // loop over quadrature points
-            for (int qp = 0; qp < qp_points.size(); ++qp)
-            {
-                for (int d = 0; d < NDIM; ++d)
-                {
-                    // contribution from Cartesian fluid velocity
-                    Flux += U_interp[qp][d] * normal(d) * JxW[qp];
-                    // correction from velocity of meter mesh
-                    //DenseVector<double> vel_vec; vel_vec.resize(NDIM);
-                    //vel_fcn(qp_points[qp], 0, vel_vec);
-                    //Flux -= vel_fcn()
-                }
-            }
-        }
-        */
-    } // loop over meters
-    
-} // readInstrumentData
-
-//**********************************************
-// write out meshes to Exodus file
-//**********************************************
-void
-IBFEInstrumentPanel::outputExodus(const int timestep, 
-                                  const double loop_time)
-{
-    for (int ii = 0; ii < d_num_meters; ++ii)
-    {
-        if(timestep == 1) Utilities::recursiveMkdir(d_plot_directory_name);
-        std::ostringstream mesh_output;
-        mesh_output << d_plot_directory_name << "/" << "" << d_meter_mesh_names[ii] << ".ex2";
-        d_exodus_io[ii]->write_timestep(mesh_output.str(), *d_meter_systems[ii], timestep, loop_time);       
-    }
-} // outputExodus
-
-//**********************************************
-// write out mesh nodes to data file
-//**********************************************
-void
-IBFEInstrumentPanel::outputNodes()
-{
-    for (int ii = 0; ii < d_num_meters; ++ii)
+    // things to do at initial timestep
+    if(timestep_num == 1); 
     {
         Utilities::recursiveMkdir(d_plot_directory_name);
-        std::ofstream stuff_stream;
-        std::ostringstream node_output;
-        node_output << d_plot_directory_name << "/" << "" << d_meter_mesh_names[ii] << "_nodes.dat";
-        stuff_stream.open(node_output.str().c_str());
-        for (int dd = 0; dd < d_nodes[0].size(); ++dd)
-        {
-            stuff_stream << d_nodes[0][dd](0) << " " <<  d_nodes[0][dd](1) << " " <<  d_nodes[0][dd](2) << "\n";
-        }
-        stuff_stream.close();
-      
+        outputNodes();
     }
-} // outputNodes
+    outputExodus(timestep_num, data_time);
+    
+    if( SAMRAI_MPI::getRank() == 0 ) 
+    {
 
-//**********************************************
-// get data from input file
-//**********************************************
-void
-IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
-{
-#if !defined(NDEBUG)
-    TBOX_ASSERT(db);
-#endif
-    if (db->keyExists("plot_directory_name")) d_plot_directory_name = db->getString("plot_directory_name");
-    if (db->keyExists("nodeset_IDs")) d_nodeset_IDs = db->getIntegerArray("nodeset_IDs");
-    return;
-} // getFromInput
+        d_mean_pressure_stream << data_time;
+        d_flux_stream << data_time;
+        for (int jj = 0; jj < d_num_meters; ++jj)
+        {
+            d_mean_pressure_stream << d_mean_pressure_values[jj];
+            d_flux_stream << d_flow_values[jj];
+        }    
+        d_mean_pressure_stream << "\n";
+        d_flux_stream << "\n";
+
+    }
+    
+}
 
 
+  
 
 

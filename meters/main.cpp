@@ -283,7 +283,6 @@ int main(int argc, char** argv)
         // initialize IBFE instrumentation
         IBFEInstrumentPanel instrument(input_db, 0);
         instrument.initializeHierarchyIndependentData(ib_method_ops);
-        instrument.outputNodes();
           
         // Deallocate initialization objects.
         app_initializer.setNull();
@@ -307,7 +306,6 @@ int main(int argc, char** argv)
             {
                exodus_io->write_timestep(
                     exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
-               instrument.outputExodus(iteration_num / viz_dump_interval + 1, loop_time);
             }
         }
         
@@ -467,7 +465,6 @@ int main(int argc, char** argv)
                 {
                     exodus_io->write_timestep(
                         exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
-                    instrument.outputExodus(iteration_num / viz_dump_interval + 1, loop_time);
                 }
             }
             if (dump_restart_data && (iteration_num % restart_dump_interval == 0 || last_step))

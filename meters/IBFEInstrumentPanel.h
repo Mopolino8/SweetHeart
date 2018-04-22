@@ -20,6 +20,9 @@
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
 
+#include <fstream>
+
+
 class IBFEInstrumentPanel 
 {
 public:
@@ -46,17 +49,11 @@ public:
     // read instrument data
     void readInstrumentData(int U_data_idx,
                             int P_data_idx,
-                            IBAMR::IBFEMethod* ib_method_ops,
                             SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
                             int timestep_num,
                             double data_time);
     
-    // write out meshes and equation systems in Exodus file
-    void outputExodus(int timestep,
-                      double loop_time);
-    
-    // write out nodes
-    void outputNodes();
+  
     
 private:
        
@@ -64,6 +61,16 @@ private:
     void
     updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
                      int meter_num);
+    
+    void outputData(int timestep_num,
+                    double data_time);
+    
+    // write out meshes and equation systems in Exodus file
+    void outputExodus(int timestep,
+                      double loop_time);
+    
+    // write out nodes
+    void outputNodes();
     
     unsigned int d_num_meters;
     libMesh::Order d_quad_order;
@@ -80,11 +87,13 @@ private:
     std::vector<libMesh::Mesh*> d_meter_meshes;
     std::vector<std::string> d_meter_mesh_names;
     
-    std::vector<double> d_flow_values, d_mean_pres_values, d_point_pres_values;
+    std::vector<double> d_flow_values, d_mean_pressure_values;
     std::string d_plot_directory_name;
     SAMRAI::tbox::Array<int> d_nodeset_IDs;
     
-    
+    std::ofstream d_mean_pressure_stream;
+    std::ofstream d_flux_stream;
+        
     struct IndexFortranOrder : public std::binary_function<SAMRAI::hier::Index<NDIM>, SAMRAI::hier::Index<NDIM>, bool>
     {
         inline bool operator()(const SAMRAI::hier::Index<NDIM>& lhs, const SAMRAI::hier::Index<NDIM>& rhs) const
