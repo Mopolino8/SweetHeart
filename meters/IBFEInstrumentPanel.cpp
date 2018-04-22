@@ -508,7 +508,7 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
         // update FE system data for meter_mesh
         updateSystemData(ib_method_ops, jj);
     }
-    
+        
     // get info about levels in AMR mesh
     const int coarsest_ln = 0;
     const int finest_ln = hierarchy->getFinestLevelNumber();
@@ -631,12 +631,12 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
                     if (level->getBoxes().contains(i) &&
                             (ln == finest_ln || !finer_level->getBoxes().contains(finer_i)))
                     {
-                        QuadPointStruct p;
-                        p.meter_num = jj;
-                        p.qp_xyz_current = &qp_temp;
-                        p.JxW = JxW[qp];
-                        p.normal = &normal;
-                        d_quad_point_map[ln].insert(std::make_pair(i, p));
+                        QuadPointStruct q;
+                        q.meter_num = jj;
+                        q.qp_xyz_current = &qp_temp;
+                        q.JxW = JxW[qp];
+                        q.normal = &normal;
+                        d_quad_point_map[ln].insert(std::make_pair(i, q));
                     }
                 }
             }
@@ -718,8 +718,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     // loop over meter meshes
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
-        // update FE system data for meter_mesh
-        updateSystemData(ib_method_ops, jj);
+       
         
         // get displacement and velocity systems for meter mesh
         const LinearImplicitSystem& velocity_sys =

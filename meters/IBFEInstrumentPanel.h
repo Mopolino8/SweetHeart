@@ -42,10 +42,6 @@ public:
                                           int timestep_num,
                                           double data_time);
    
-    // update system data
-    void
-    updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
-                     int meter_num);
     
     // read instrument data
     void readInstrumentData(int U_data_idx,
@@ -64,6 +60,11 @@ public:
     
 private:
        
+     // update system data
+    void
+    updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
+                     int meter_num);
+    
     unsigned int d_num_meters;
     libMesh::Order d_quad_order;
     std::vector<int> d_num_quad_points;
@@ -78,6 +79,7 @@ private:
     std::vector<libMesh::ExodusII_IO*> d_exodus_io;
     std::vector<libMesh::Mesh*> d_meter_meshes;
     std::vector<std::string> d_meter_mesh_names;
+    
     std::vector<double> d_flow_values, d_mean_pres_values, d_point_pres_values;
     std::string d_plot_directory_name;
     SAMRAI::tbox::Array<int> d_nodeset_IDs;
