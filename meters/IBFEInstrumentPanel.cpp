@@ -488,7 +488,15 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
         UniquePtr<FEBase> fe_elem(FEBase::build(NDIM-1, fe_type));
         QGauss qrule(NDIM-1, d_quad_order);
         fe_elem->attach_quadrature_rule(&qrule);
-        d_num_quad_points[jj] = d_meter_meshes[jj]->n_elem() * fe_elem->get_xyz().size();
+        const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
+        MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
+        const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
+        for ( ; el != end_el; ++el)
+        {  
+            const Elem * elem = *el;
+            fe_elem->reinit(elem);
+            d_num_quad_points[jj] += qp_points.size();
+        }
     }
   
     // store dof indices for the velocity and displacement systems that we will use later
@@ -514,9 +522,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
 
 void
 IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                                      const Pointer<PatchHierarchy<NDIM> > hierarchy,
-                                                      const int timestep_num,
-                                                      const double data_time)
+                                                      const Pointer<PatchHierarchy<NDIM> > hierarchy)
 {
     if (!d_initialized)
     {
@@ -546,6 +552,8 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
     // reset the quad point maps
     d_quad_point_map.clear();
     d_quad_point_map.resize(finest_ln + 1);
+
+
     // loop over levels and assign each quadrature point to one level
     for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
     {
@@ -581,7 +589,7 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
             
             // set up FE objects
             UniquePtr<FEBase> fe_elem(FEBase::build(NDIM-1, fe_type));
-            QGauss qrule(NDIM-1, fe_type.default_quadrature_order());
+            QGauss qrule(NDIM-1, d_quad_order);
             fe_elem->attach_quadrature_rule(&qrule);
             
             //  for evaluating the displacement system
@@ -621,7 +629,7 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
                 // after displacement, and stores their indices.
                 for (int qp = 0; qp < qp_points.size(); ++qp)
                 {
-                    Vector qp_temp; qp_temp.resize(NDIM); 
+                    Vector qp_temp; 
                     double disp_comp = 0.0;
                     for (int d = 0; d < NDIM; ++d)
                     {
@@ -653,16 +661,15 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
                     {
                         QuadPointStruct q;
                         q.meter_num = jj;
-                        q.qp_xyz_current = &qp_temp;
+                        q.qp_xyz_current = qp_temp;
                         q.JxW = JxW[qp];
-                        q.normal = &normal;
+                        q.normal = normal;
                         d_quad_point_map[ln].insert(std::make_pair(i, q));
                     }
                 }
             }
         }
     }
-    
 }
 
 //**********************************************
@@ -685,9 +692,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     std::fill(d_mean_pressure_values.begin(), d_mean_pressure_values.end(), 0.0);
     std::vector<double> A(d_num_meters, 0.0);
     
-    // Compute the local contributions to the flux of U through the flow meter,
-    // the average value of P in the flow meter, and the pointwise value of P at
-    // the centroid of the meter.
+    // compute flow and mean pressure on mesh meters
     for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
     {
         Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(ln);
@@ -714,7 +719,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                         d_quad_point_map[ln].equal_range(i);
                 if (qp_range.first != qp_range.second)
                 {
-                    const Point X_cell(x_lower[0] + dx[0] * (static_cast<double>(i(0) - patch_lower(0)) + 0.5),
+                    const Vector X_cell(x_lower[0] + dx[0] * (static_cast<double>(i(0) - patch_lower(0)) + 0.5),
                             x_lower[1] + dx[1] * (static_cast<double>(i(1) - patch_lower(1)) + 0.5)
 #if (NDIM == 3)
                     ,
@@ -726,9 +731,9 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                         for (QuadPointMap::const_iterator it = qp_range.first; it != qp_range.second; ++it)
                         {
                             const int& meter_num = it->second.meter_num;
-                            const double JxW = *(it->second.JxW);
-                            const Vector& X = *(it->second.qp_xyz_current);
-                            const Vector& normal = *(it->second.normal);
+                            const double& JxW = it->second.JxW;
+                            const Vector& X = it->second.qp_xyz_current;
+                            const Vector& normal = it->second.normal;
                             const Vector U = linear_interp<NDIM>(
                             X, i, X_cell, *U_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
                             d_flow_values[meter_num] += ( U.dot(normal) ) * JxW;
@@ -739,12 +744,14 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                         for (QuadPointMap::const_iterator it = qp_range.first; it != qp_range.second; ++it)
                         {
                             const int& meter_num = it->second.meter_num;
-                            const double JxW = *(it->second.JxW);
-                            const Vector& X = *(it->second.qp_xyz_current);
-                            const Vector& normal = *(it->second.normal);
+                            const double& JxW = it->second.JxW;
+                            const Vector& X = it->second.qp_xyz_current;
+                            const Vector& normal = it->second.normal;
                             const Vector U =
                             linear_interp(X, i, X_cell, *U_sc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
                             d_flow_values[meter_num] += ( U.dot(normal) ) * JxW;
+                            std::cout << "X = " << X[0] << " " << X[1] << " " << X[2] << " \n";
+                            std::cout << "normal = " << normal[0] << " " << normal[1] << " " << normal[2] << " \n";
                         }
                     }
                     if (P_cc_data)
@@ -752,12 +759,14 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                         for (QuadPointMap::const_iterator it = qp_range.first; it != qp_range.second; ++it)
                         {
                             const int& meter_num = it->second.meter_num;
-                            const double JxW = *(it->second.JxW);
-                            const Vector& X = *(it->second.qp_xyz_current);
+                            const double& JxW = it->second.JxW;
+                            const Vector& X = it->second.qp_xyz_current;
                             double P =
                             linear_interp(X, i, X_cell, *P_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
                             d_mean_pressure_values[meter_num] += P * JxW;
                             A[meter_num] += JxW;
+                            //std::cout << "X = " << X[0] << " " << X[1] << " " << X[2] << " \n";
+                            //std::cout << "normal = " << normal[0] << " " << normal[1] << " " << normal[2] << " \n";
                         }
                     }
                 }
@@ -839,7 +848,6 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                 }         
             }
         }
-        
         d_flow_values[jj] -= flux_correction;
         
     } // loop over meters
@@ -961,18 +969,23 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
     
 } // updateSystemData
 
-
 void
-IBFEInstrumentPanel::outputData(const int timestep_num,
-                                const double data_time)
+IBFEInstrumentPanel::outputMeterMeshes(const int timestep_num,
+                                       const double data_time)
 {
-    // things to do at initial timestep
+     // things to do at initial timestep
     if(timestep_num == 1); 
     {
         Utilities::recursiveMkdir(d_plot_directory_name);
         outputNodes();
     }
     outputExodus(timestep_num, data_time);
+}
+
+void
+IBFEInstrumentPanel::outputData(const int timestep_num,
+                                const double data_time)
+{
     
     if( SAMRAI_MPI::getRank() == 0 ) 
     {
@@ -981,8 +994,8 @@ IBFEInstrumentPanel::outputData(const int timestep_num,
         d_flux_stream << data_time;
         for (int jj = 0; jj < d_num_meters; ++jj)
         {
-            d_mean_pressure_stream << d_mean_pressure_values[jj];
-            d_flux_stream << d_flow_values[jj];
+            d_mean_pressure_stream << " " << d_mean_pressure_values[jj];
+            d_flux_stream << " " << d_flow_values[jj];
         }    
         d_mean_pressure_stream << "\n";
         d_flux_stream << "\n";

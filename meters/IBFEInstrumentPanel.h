@@ -41,11 +41,8 @@ public:
     void initializeHierarchyIndependentData(IBAMR::IBFEMethod* ib_method_ops);
     
     void initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_method_ops,
-                                          SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
-                                          int timestep_num,
-                                          double data_time);
-   
-    
+                                          SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy);
+       
     // read instrument data
     void readInstrumentData(int U_data_idx,
                             int P_data_idx,
@@ -54,6 +51,8 @@ public:
                             double data_time);
     
   
+    void outputMeterMeshes(int timestep_num,
+                           double data_time);
     
 private:
        
@@ -114,8 +113,8 @@ private:
     struct QuadPointStruct
     {
         int meter_num; // meter ID
-        const IBTK::Vector* normal; // normal vector at point qp
-        const IBTK::Vector* qp_xyz_current; // physical location of qp
+        IBTK::Vector normal; // normal vector at point qp
+        IBTK::Vector qp_xyz_current; // physical location of qp
         double JxW; // Jacobian multiplied by the quadrature weight
     };
 

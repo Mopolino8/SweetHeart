@@ -306,6 +306,7 @@ int main(int argc, char** argv)
             {
                exodus_io->write_timestep(
                     exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
+               instrument.outputMeterMeshes(iteration_num / viz_dump_interval + 1, loop_time);
             }
         }
         
@@ -442,9 +443,8 @@ int main(int argc, char** argv)
                 if (!level->checkAllocated(u_copy_idx)) level->allocatePatchData(u_copy_idx);
             }
             
-            instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy, iteration_num, loop_time);
-            std::cout << "\n";
-            instrument.readInstrumentData(u_copy_idx, p_copy_idx, ib_method_ops, patch_hierarchy, iteration_num, loop_time);
+            instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
+            instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, iteration_num, loop_time);
             
             //************************************************
             
@@ -465,6 +465,7 @@ int main(int argc, char** argv)
                 {
                     exodus_io->write_timestep(
                         exodus_filename, *equation_systems, iteration_num / viz_dump_interval + 1, loop_time);
+                    instrument.outputMeterMeshes(iteration_num / viz_dump_interval + 1, loop_time);
                 }
             }
             if (dump_restart_data && (iteration_num % restart_dump_interval == 0 || last_step))
