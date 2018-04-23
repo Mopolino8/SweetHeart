@@ -765,8 +765,6 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                             linear_interp(X, i, X_cell, *P_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
                             d_mean_pressure_values[meter_num] += P * JxW;
                             A[meter_num] += JxW;
-                            //std::cout << "X = " << X[0] << " " << X[1] << " " << X[2] << " \n";
-                            //std::cout << "normal = " << normal[0] << " " << normal[1] << " " << normal[2] << " \n";
                         }
                     }
                 }

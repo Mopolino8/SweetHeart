@@ -647,7 +647,11 @@ int main (int argc, char** argv)
   }
   
 #ifdef LIBMESH_HAVE_EXODUS_API
-  ExodusII_IO (mesh).write_discontinuous_exodusII("fibers_for_"+mesh_name, equation_system);
+  
+  ExodusII_IO blah(mesh);
+  blah.write("fibers_for_"+mesh_name);
+  blah.write_element_data(equation_system);
+  //ExodusII_IO (mesh).write_discontinuous_exodusII("fibers_for_"+mesh_name, equation_system);
   //ExodusII_IO  poo(mesh);
   //poo.write("test.e");
   //poo.write_element_data(equation_system);
