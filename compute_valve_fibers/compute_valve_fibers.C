@@ -98,7 +98,7 @@ void assemble_ipdg_poisson(EquationSystems & es,
     const int system_flag = es.parameters.get<int> ("system_flag");
     std::cout << "system flag = " << system_flag << "\n";
     LinearImplicitSystem& poisson_system = (system_flag == 1) ? es.get_system<LinearImplicitSystem>("poisson_1") : es.get_system<LinearImplicitSystem>("poisson_2");
-        const Real jump0_penalty = es.parameters.get<Real> ("jump0_penalty");
+    const Real jump0_penalty = es.parameters.get<Real> ("jump0_penalty");
     const Real jump1_penalty = es.parameters.get<Real> ("jump1_penalty");
     const Real beta0 = es.parameters.get<Real> ("beta0");
     const Real beta1 = es.parameters.get<Real> ("beta1");
@@ -502,7 +502,7 @@ int main (int argc, char** argv)
   GetPot input_file(argv[1]);
 
   //Read in parameters from the input file
-  Order p_order                                = static_cast<Order>(input_file("p_order", 1));
+  Order p_order                                = Utility::string_to_enum<Order>(input_file("p_order", "FIRST"));
   const Real jump0_penalty                     = input_file("jump0_penalty", 10.);
   const Real jump1_penalty                     = input_file("jump1_penalty", 10.);
   const Real beta0                             = input_file("beta0", 1.);
@@ -541,6 +541,7 @@ int main (int argc, char** argv)
   
   // create an equation system object
   EquationSystems equation_system (mesh);
+  mesh.all_second_order(true);
   
   // set parameters for the equation system and the solver
   equation_system.parameters.set<Real>("linear solver tolerance") = TOLERANCE * TOLERANCE;
@@ -651,10 +652,8 @@ int main (int argc, char** argv)
   ExodusII_IO blah(mesh);
   blah.write("fibers_for_"+mesh_name);
   blah.write_element_data(equation_system);
-  //ExodusII_IO (mesh).write_discontinuous_exodusII("fibers_for_"+mesh_name, equation_system);
-  //ExodusII_IO  poo(mesh);
-  //poo.write("test.e");
-  //poo.write_element_data(equation_system);
+  ExodusII_IO (mesh).write_discontinuous_exodusII("results_for_"+mesh_name, equation_system);
+  
 #endif
     
 #endif // #ifndef LIBMESH_ENABLE_AMR

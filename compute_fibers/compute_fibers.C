@@ -545,7 +545,7 @@ int main (int argc, char** argv)
   // add variables to system, attach assemble function, and initialize system
   if(continuous_galerkin)
   {
-      ellipticdg_system.add_variable ("u", static_cast<Order>(1), LAGRANGE);
+      ellipticdg_system.add_variable ("u", p_order, LAGRANGE);
   }
   else
   {

@@ -5,7 +5,7 @@ dimension = 3
 p_order = 2 
 
 # whether or not to do continuous Galerkin
-continuous_galerkin = false
+continuous_galerkin = true
 
 # for the penalty terms
 jump0_penalty = 10
@@ -21,5 +21,5 @@ zero_IDs = 8000,8100,8200
 one_IDs = 8001,8101,8201
 
 #  mesh filename
-mesh_name = idealized_aortic_valve_v3.e
+mesh_name = mitral_papillary_muscles.e
 

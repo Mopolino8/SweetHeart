@@ -2,7 +2,7 @@
 dimension = 3 
 
 # minimum approximation order
-p_order = 2 
+p_order = FOURTH
 
 # whether or not to do continuous Galerkin
 continuous_galerkin = false
