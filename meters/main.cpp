@@ -382,6 +382,17 @@ int main(int argc, char** argv)
             pout << "+++++++++++++++++++++++++++++++++++++++++++++++++++\n";
             pout << "\n";
             
+            // see if we need to reallocate
+            HierarchyMathOps hier_math_ops("HierarchyMathOps", patch_hierarchy);
+            hier_math_ops.setPatchHierarchy(patch_hierarchy);
+            hier_math_ops.resetLevels(coarsest_ln, finest_ln);
+            for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
+            {
+                Pointer<PatchLevel<NDIM> > level = patch_hierarchy->getPatchLevel(ln);
+                if (!level->checkAllocated(p_copy_idx)) level->allocatePatchData(p_copy_idx);
+                if (!level->checkAllocated(u_copy_idx)) level->allocatePatchData(u_copy_idx);
+            }
+            
             // **********************************************
             // get mean pressure and velocity on surface mesh
             //***********************************************
@@ -431,17 +442,6 @@ int main(int argc, char** argv)
             velocity_stream << loop_time;
             for(int dd = 0; dd < NDIM; ++dd) velocity_stream << " " << MeanVelocityData(dd);
             velocity_stream << "\n";
-            
-            // see if we need to reallocate
-            HierarchyMathOps hier_math_ops("HierarchyMathOps", patch_hierarchy);
-            hier_math_ops.setPatchHierarchy(patch_hierarchy);
-            hier_math_ops.resetLevels(coarsest_ln, finest_ln);
-            for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
-            {
-                Pointer<PatchLevel<NDIM> > level = patch_hierarchy->getPatchLevel(ln);
-                if (!level->checkAllocated(p_copy_idx)) level->allocatePatchData(p_copy_idx);
-                if (!level->checkAllocated(u_copy_idx)) level->allocatePatchData(u_copy_idx);
-            }
             
             instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
             instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, iteration_num, loop_time);

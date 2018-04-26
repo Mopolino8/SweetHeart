@@ -750,8 +750,8 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                             const Vector U =
                             linear_interp(X, i, X_cell, *U_sc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
                             d_flow_values[meter_num] += ( U.dot(normal) ) * JxW;
-                            std::cout << "X = " << X[0] << " " << X[1] << " " << X[2] << " \n";
-                            std::cout << "normal = " << normal[0] << " " << normal[1] << " " << normal[2] << " \n";
+                            //std::cout << "X = " << X[0] << " " << X[1] << " " << X[2] << " \n";
+                            //std::cout << "normal = " << normal[0] << " " << normal[1] << " " << normal[2] << " \n";
                         }
                     }
                     if (P_cc_data)
@@ -984,10 +984,8 @@ void
 IBFEInstrumentPanel::outputData(const int timestep_num,
                                 const double data_time)
 {
-    
     if( SAMRAI_MPI::getRank() == 0 ) 
     {
-
         d_mean_pressure_stream << data_time;
         d_flux_stream << data_time;
         for (int jj = 0; jj < d_num_meters; ++jj)
@@ -997,9 +995,7 @@ IBFEInstrumentPanel::outputData(const int timestep_num,
         }    
         d_mean_pressure_stream << "\n";
         d_flux_stream << "\n";
-
     }
-    
 }
 
 
