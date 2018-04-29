@@ -60,8 +60,8 @@ private:
     void updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
                      int meter_num);
     
-    void outputData(int timestep_num,
-                    double data_time);
+    // write out data to file
+    void outputData(double data_time);
     
     // write out meshes and equation systems in Exodus file
     void outputExodus(int timestep,

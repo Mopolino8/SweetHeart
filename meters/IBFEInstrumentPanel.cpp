@@ -979,8 +979,7 @@ IBFEInstrumentPanel::outputMeterMeshes(const int timestep_num,
 }
 
 void
-IBFEInstrumentPanel::outputData(const int timestep_num,
-                                const double data_time)
+IBFEInstrumentPanel::outputData(const double data_time)
 {
     
     if( SAMRAI_MPI::getRank() == 0 ) 
