@@ -297,9 +297,8 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
 {
     // get input data
     IBFEInstrumentPanel::getFromInput(input_db);
-    
+
     // set up file streams
-      // Close the log file stream.
     if (SAMRAI_MPI::getRank() == 0)
     {
         std::ostringstream press_output;
@@ -309,7 +308,6 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         flux_output << d_plot_directory_name << "/" << "" << "flux.dat";
         d_flux_stream.open(flux_output.str().c_str());
     }
-    
 }
 
 
@@ -864,7 +862,6 @@ IBFEInstrumentPanel::outputExodus(const int timestep,
 {
     for (int ii = 0; ii < d_num_meters; ++ii)
     {
-        if(timestep == 1) Utilities::recursiveMkdir(d_plot_directory_name);
         std::ostringstream mesh_output;
         mesh_output << d_plot_directory_name << "/" << "" << d_meter_mesh_names[ii] << ".ex2";
         d_exodus_io[ii]->write_timestep(mesh_output.str(), *d_meter_systems[ii], timestep, loop_time);       
@@ -976,7 +973,6 @@ IBFEInstrumentPanel::outputMeterMeshes(const int timestep_num,
      // things to do at initial timestep
     if(timestep_num == 1); 
     {
-        Utilities::recursiveMkdir(d_plot_directory_name);
         outputNodes();
     }
     outputExodus(timestep_num, data_time);
@@ -986,6 +982,7 @@ void
 IBFEInstrumentPanel::outputData(const int timestep_num,
                                 const double data_time)
 {
+    
     if( SAMRAI_MPI::getRank() == 0 ) 
     {
         d_mean_pressure_stream << data_time;
