@@ -279,7 +279,7 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_part(part),
         d_nodes(),
         d_node_dof_IDs(),
-        d_quad_order(SECOND),
+        d_quad_order(),
         d_num_quad_points(),
         d_num_nodes(),
         d_U_dof_idx(),        
@@ -498,7 +498,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
             d_num_quad_points[jj] += qp_points.size();
         }
     }
-  
+    
     // store dof indices for the velocity and displacement systems that we will use later
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
@@ -906,6 +906,8 @@ IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
 #endif
     if (db->keyExists("plot_directory_name")) d_plot_directory_name = db->getString("plot_directory_name");
     if (db->keyExists("nodeset_IDs")) d_nodeset_IDs = db->getIntegerArray("nodeset_IDs");
+    if (db->keyExists("meter_mesh_quad_order")) d_quad_order 
+            = Utility::string_to_enum<Order>(db->getStringWithDefault("meter_mesh_quad_order", "SECOND"));
     return;
 } // getFromInput
 
