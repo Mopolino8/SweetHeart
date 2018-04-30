@@ -5,7 +5,7 @@ L = 15.0
 
 // grid spacing parameters
 MAX_LEVELS = 3                                 // maximum number of levels in locally refined grid
-REF_RATIO  = 2                                 // refinement ratio between levels
+REF_RATIO  = 3                                 // refinement ratio between levels
 N = 32                                         // actual    number of grid cells on coarsest grid level
 NFINEST = (REF_RATIO^(MAX_LEVELS - 1))*N       // effective number of grid cells on finest   grid level
 DX0 = L/N                                      // mesh width on coarsest grid level
@@ -123,12 +123,12 @@ gcoef_function_5 = "0.0"
 
 VelocityInitialConditions {
 
-    V_background = 0.0
+    V_background = 50.0
     V_peak = 100.0
      
     function_0 = "0.0"  // u component 
     function_1 = "0.0"  // v component 
-    function_2 = "if( (X_0^2 + X_1^2) < 1.0, (V_peak*(1.0 - X_0^2 - X_1^2) + V_background), V_background )"  // w component 
+    function_2 = "if( sqrt(X_0^2 + X_1^2) < 0.5, (4.0*V_peak*(0.25 - X_0^2 - X_1^2) + V_background), V_background )"  // w component 
 } 
 
 IBHierarchyIntegrator {
