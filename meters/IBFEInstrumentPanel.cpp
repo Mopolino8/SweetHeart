@@ -612,7 +612,7 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
                     dof_map.dof_indices (elem, dof_indices, d);
                     for (int nn = 0; nn < dof_indices.size(); ++nn)
                     {
-                        disp_coords(d,nn) =  (*displacement_sys.solution)(dof_indices[nn]);
+                        disp_coords(d,nn) =  (*displacement_sys.current_local_solution)(dof_indices[nn]);
                     }
                 }
 
@@ -770,11 +770,13 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
             }
         }
     }
-    
+       
     // Synchronize the values across all processes.
     SAMRAI_MPI::sumReduction(&d_flow_values[0], d_num_meters);
     SAMRAI_MPI::sumReduction(&d_mean_pressure_values[0], d_num_meters);
     SAMRAI_MPI::sumReduction(&A[0], d_num_meters);
+    
+    std::cout << d_flow_values[0] << "\n";
     
     // Normalize the mean pressure.
     for (unsigned int jj = 0; jj < d_num_meters; ++jj)
@@ -820,7 +822,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                 dof_map.dof_indices (elem, dof_indices, d);
                 for (int nn = 0; nn < dof_indices.size(); ++nn)
                 {
-                    vel_coords(d,nn) =  (*velocity_sys.solution)(dof_indices[nn]);
+                    vel_coords(d,nn) =  (*velocity_sys.current_local_solution)(dof_indices[nn]);
                 }
             }
             
@@ -919,24 +921,28 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
                                       const int meter_mesh_number)
 {
     
-    // get the coordinate mapping system and velocity systems
+    // get the coordinate mapping system and velocity systems for the parent mesh
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
     const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
     const System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
-    NumericVector<double>& dX_coords = *dX_system.solution;
+    std::vector<double> dX_coords;
+    dX_system.update_global_solution(dX_coords);
+    //NumericVector<double>& dX_coords = *dX_system.current_local_solution;
     const System& U_system = equation_systems->get_system(IBFEMethod::VELOCITY_SYSTEM_NAME);
-    NumericVector<double>& U_coords = *U_system.solution;
+    std::vector<double> U_coords;
+    U_system.update_global_solution(U_coords);
+    //NumericVector<double>& U_coords = *U_system.current_local_solution;
     
     // get displacement and velocity systems for meter mesh
     const LinearImplicitSystem& velocity_sys =
     d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
     const unsigned int velocity_sys_num = velocity_sys.number();
-    NumericVector<double>& velocity_coords = *velocity_sys.solution;
+    NumericVector<double>& velocity_coords = *velocity_sys.current_local_solution;
     
     const LinearImplicitSystem& displacement_sys =
     d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
     const unsigned int displacement_sys_num = displacement_sys.number();
-    NumericVector<double>& displacement_coords = *displacement_sys.solution;
+    NumericVector<double>& displacement_coords = *displacement_sys.current_local_solution;
         
     // loop over nodes
     for (int ii = 0; ii < d_num_nodes[meter_mesh_number]; ++ii)
@@ -947,11 +953,17 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
         // get corresponding dofs on parent mesh
         std::vector<double> U_dofs;
         U_dofs.resize(NDIM);
-        U_coords.get(d_U_dof_idx[meter_mesh_number][ii], U_dofs);
+        //U_coords.get(d_U_dof_idx[meter_mesh_number][ii], U_dofs);
         
         std::vector<double> dX_dofs;
         dX_dofs.resize(NDIM);
-        dX_coords.get(d_dX_dof_idx[meter_mesh_number][ii], dX_dofs);
+        //dX_coords.get(d_dX_dof_idx[meter_mesh_number][ii], dX_dofs);
+        
+        for (int d = 0; d < NDIM; ++d)
+        {
+            U_dofs[d] = U_coords[d_U_dof_idx[meter_mesh_number][ii][d]];
+            dX_dofs[d] = dX_coords[d_dX_dof_idx[meter_mesh_number][ii][d]];
+        }
         
         // set dofs in meter mesh to correspond to the same values
         // as in the parent mesh
