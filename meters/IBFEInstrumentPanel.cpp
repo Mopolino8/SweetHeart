@@ -516,7 +516,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
     }
     d_initialized = true;
     
-} // initializeData
+} // initializeHierarchyIndependentData
 
 void
 IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_method_ops,
@@ -849,7 +849,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     } // loop over meters
     
     // write data
-    outputData(timestep_num, data_time);
+    outputData(data_time);
     
 } // readInstrumentData
 

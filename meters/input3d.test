@@ -4,9 +4,9 @@ RHO = 1.0
 L = 15.0
 
 // grid spacing parameters
-MAX_LEVELS = 3                                 // maximum number of levels in locally refined grid
+MAX_LEVELS = 1                                 // maximum number of levels in locally refined grid
 REF_RATIO  = 2                                 // refinement ratio between levels
-N = 32                                         // actual    number of grid cells on coarsest grid level
+N = 256                                         // actual    number of grid cells on coarsest grid level
 NFINEST = (REF_RATIO^(MAX_LEVELS - 1))*N       // effective number of grid cells on finest   grid level
 DX0 = L/N                                      // mesh width on coarsest grid level
 DX  = L/NFINEST                                // mesh width on finest   grid level
@@ -18,7 +18,7 @@ PK1_DIL_QUAD_ORDER = "THIRD"
 // list of nodeset IDs and plot directory
 nodeset_IDs = 1
 plot_directory_name = "viz_inst3d"
-meter_mesh_quad_order = "SECOND"        
+meter_mesh_quad_order = "TENTH"        
         
 // solver parameters
 IB_DELTA_FUNCTION          = "IB_4"            // the type of smoothed delta function to use for Lagrangian-Eulerian interaction
@@ -30,7 +30,7 @@ SOLVER_TYPE                = "STAGGERED"       // the fluid solver to use (STAGG
 CFL_MAX                    = 0.3               // maximum CFL number
 DT                         = 0.0001*DX           // maximum timestep size
 START_TIME                 = 0.0e0             // initial simulation time
-END_TIME                   = 3*DT                 // growth factor for timesteps
+END_TIME                   = DT                 // growth factor for timesteps
 GROW_DT                    = 2.0e0             // growth factor for timesteps
 NUM_CYCLES                 = 1                 // number of cycles of fixed-point iteration
 CONVECTIVE_TS_TYPE         = "ADAMS_BASHFORTH" // convective time stepping type
@@ -121,10 +121,14 @@ gcoef_function_4 = "0.0"
 gcoef_function_5 = "0.0"
 		  }
 
-VelocityInitialConditions { 
+VelocityInitialConditions {
+
+    V_background = 0.0
+    V_peak = 100.0
+     
     function_0 = "0.0"  // u component 
     function_1 = "0.0"  // v component 
-    function_2 = "100.0"  // w component 
+    function_2 = "if( (X_0^2 + X_1^2) < 1.0, (V_peak*(1.0 - X_0^2 - X_1^2) + V_background), V_background )"  // w component 
 } 
 
 IBHierarchyIntegrator {
