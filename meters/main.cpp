@@ -359,6 +359,44 @@ int main(int argc, char** argv)
         
         // Main time step loop.
         double loop_time_end = time_integrator->getEndTime();
+                
+        // **********************************************
+        // get mean pressure and velocity on surface mesh
+        //***********************************************
+        HierarchyDataOpsManager<NDIM>* hier_data_ops_manager = HierarchyDataOpsManager<NDIM>::getManager();
+        Pointer<HierarchyDataOpsReal<NDIM, double> > hier_cc_data_ops = hier_data_ops_manager->getOperationsDouble(p_var, patch_hierarchy, true);
+        Pointer<HierarchyDataOpsReal<NDIM, double> > hier_sc_data_ops = hier_data_ops_manager->getOperationsDouble(u_var, patch_hierarchy, true);
+        hier_cc_data_ops->copyData(p_copy_idx, p_current_idx, true);
+        hier_sc_data_ops->copyData(u_copy_idx, u_current_idx, true);
+        
+        // fill ghost cells for pressure
+        typedef HierarchyGhostCellInterpolation::InterpolationTransactionComponent InterpolationTransactionComponent;
+        std::vector<InterpolationTransactionComponent> p_transaction_comp(1);
+        p_transaction_comp[0] = InterpolationTransactionComponent(p_copy_idx,
+                "LINEAR_REFINE",
+                /*use_cf_bdry_interpolation*/ false,
+                "CONSERVATIVE_COARSEN",
+                "LINEAR");
+        
+        Pointer<HierarchyGhostCellInterpolation> p_hier_bdry_fill = new HierarchyGhostCellInterpolation();
+        p_hier_bdry_fill->initializeOperatorState(p_transaction_comp, patch_hierarchy);
+        p_hier_bdry_fill->fillData(loop_time);
+        
+        // fill ghost cells for velocity
+        std::vector<InterpolationTransactionComponent> u_transaction_comp(1);
+        u_transaction_comp[0] = InterpolationTransactionComponent(u_copy_idx,
+                "CONSERVATIVE_LINEAR_REFINE",
+                /*use_cf_bdry_interpolation*/ false,
+                "CONSERVATIVE_COARSEN",
+                "LINEAR");
+        
+        Pointer<HierarchyGhostCellInterpolation> u_hier_bdry_fill = new HierarchyGhostCellInterpolation();
+        u_hier_bdry_fill->initializeOperatorState(u_transaction_comp, patch_hierarchy);
+        u_hier_bdry_fill->fillData(loop_time);
+                       
+        instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
+        instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, iteration_num, loop_time);
+                
         double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
         {
@@ -393,41 +431,16 @@ int main(int argc, char** argv)
                 if (!level->checkAllocated(u_copy_idx)) level->allocatePatchData(u_copy_idx);
             }
             
-            // **********************************************
-            // get mean pressure and velocity on surface mesh
-            //***********************************************
-            HierarchyDataOpsManager<NDIM>* hier_data_ops_manager = HierarchyDataOpsManager<NDIM>::getManager();
-            Pointer<HierarchyDataOpsReal<NDIM, double> > hier_cc_data_ops = hier_data_ops_manager->getOperationsDouble(p_var, patch_hierarchy, true);
-            Pointer<HierarchyDataOpsReal<NDIM, double> > hier_sc_data_ops = hier_data_ops_manager->getOperationsDouble(u_var, patch_hierarchy, true);
             hier_cc_data_ops->copyData(p_copy_idx, p_current_idx, true);
             hier_sc_data_ops->copyData(u_copy_idx, u_current_idx, true);
               
-            // fill ghost cells for pressure
-            typedef HierarchyGhostCellInterpolation::InterpolationTransactionComponent InterpolationTransactionComponent;
-            std::vector<InterpolationTransactionComponent> p_transaction_comp(1);
-            p_transaction_comp[0] = InterpolationTransactionComponent(p_copy_idx,
-                                                                    "LINEAR_REFINE",
-                                                                    /*use_cf_bdry_interpolation*/ false,
-                                                                    "CONSERVATIVE_COARSEN",
-                                                                    "LINEAR");
-                                                                                           
-            Pointer<HierarchyGhostCellInterpolation> p_hier_bdry_fill = new HierarchyGhostCellInterpolation();
             p_hier_bdry_fill->initializeOperatorState(p_transaction_comp, patch_hierarchy);
             p_hier_bdry_fill->fillData(loop_time);
             
-            // fill ghost cells for velocity
-            std::vector<InterpolationTransactionComponent> u_transaction_comp(1);
-            u_transaction_comp[0] = InterpolationTransactionComponent(u_copy_idx,
-                                                                    "CONSERVATIVE_LINEAR_REFINE",
-                                                                    /*use_cf_bdry_interpolation*/ false,
-                                                                    "CONSERVATIVE_COARSEN",
-                                                                    "LINEAR");
-                                                                                           
-            Pointer<HierarchyGhostCellInterpolation> u_hier_bdry_fill = new HierarchyGhostCellInterpolation();
             u_hier_bdry_fill->initializeOperatorState(u_transaction_comp, patch_hierarchy);
             u_hier_bdry_fill->fillData(loop_time);
                         
-            System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
+           /* System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
             NumericVector<double>* X_vec = X_system.solution.get();
             NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
             X_vec->localize(*X_ghost_vec);
@@ -441,7 +454,7 @@ int main(int argc, char** argv)
             flux_stream << loop_time << " " << FluxData << "\n";
             velocity_stream << loop_time;
             for(int dd = 0; dd < NDIM; ++dd) velocity_stream << " " << MeanVelocityData(dd);
-            velocity_stream << "\n";
+            velocity_stream << "\n"; */
             
             instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
             instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, iteration_num, loop_time);
