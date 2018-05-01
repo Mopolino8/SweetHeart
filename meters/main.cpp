@@ -284,6 +284,8 @@ int main(int argc, char** argv)
         ib_method_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
                      
+        perr << "HERE -1 \n";
+
         // initialize IBFE instrumentation
         IBFEInstrumentPanel instrument(input_db, 0);
         instrument.initializeHierarchyIndependentData(ib_method_ops);
@@ -327,6 +329,8 @@ int main(int argc, char** argv)
             flux_stream.open("flux.dat", ios_base::out | ios_base::trunc);
         }
         
+        perr << "HERE 0\n";
+        
         // setting up some objects for computing mean pressure
         VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
         Pointer<hier::Variable<NDIM> > p_var = navier_stokes_integrator->getPressureVariable();
@@ -364,6 +368,9 @@ int main(int argc, char** argv)
         // Main time step loop.
         double loop_time_end = time_integrator->getEndTime();
                 
+        perr << "HERE 1\n";
+                    
+        
         // **********************************************
         // get mean pressure and velocity on surface mesh
         //***********************************************
@@ -398,9 +405,14 @@ int main(int argc, char** argv)
         u_hier_bdry_fill->initializeOperatorState(u_transaction_comp, patch_hierarchy);
         u_hier_bdry_fill->fillData(loop_time);
                        
+        perr << "HERE 2\n";
+        
         instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
         instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
                 
+        perr << "HERE 3\n";
+                    
+        
         double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
         {
@@ -459,7 +471,7 @@ int main(int argc, char** argv)
             velocity_stream << loop_time;
             for(int dd = 0; dd < NDIM; ++dd) velocity_stream << " " << MeanVelocityData(dd);
             velocity_stream << "\n"; */
-            
+                        
             instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
             instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
             

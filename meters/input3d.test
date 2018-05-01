@@ -4,7 +4,7 @@ RHO = 1.0
 L = 15.0
 
 // grid spacing parameters
-MAX_LEVELS = 4                                 // maximum number of levels in locally refined grid
+MAX_LEVELS = 3                                 // maximum number of levels in locally refined grid
 REF_RATIO  = 2                                 // refinement ratio between levels
 N = 32                                         // actual    number of grid cells on coarsest grid level
 NFINEST = (REF_RATIO^(MAX_LEVELS - 1))*N       // effective number of grid cells on finest   grid level
@@ -220,7 +220,7 @@ Main {
 
 // visualization dump parameters
    viz_writer                  = "VisIt","ExodusII"
-   viz_dump_interval           = 1
+   viz_dump_interval           = 0
    viz_dump_dirname            = "viz_IB3d"
    visit_number_procs_per_file = 1
 

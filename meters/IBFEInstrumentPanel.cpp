@@ -307,6 +307,8 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_mean_pressure_stream.open(press_output.str().c_str());
         flux_output << d_plot_directory_name << "/" << "" << "flux.dat";
         d_flux_stream.open(flux_output.str().c_str());
+        d_mean_pressure_stream.precision(10);
+        d_flux_stream.precision(10);
     }
 }
 
@@ -367,7 +369,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
     temp_node_dof_IDs.resize(d_num_meters);
     temp_nodes.resize(d_num_meters);
     meter_centroids.resize(d_num_meters);
-    
+        
     //perr << comm_in.rank() << " " << nodes.size() << "\n";
     // populate temp vectors
     for (int ii = 0; ii < nodes.size(); ++ii)
@@ -383,7 +385,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
             }
         }
     }
-        
+            
     // loop over meters and sort the nodes
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
@@ -425,7 +427,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
             max_dist = std::numeric_limits<double>::max();
         }
     } // loop over meters
-   
+       
     // initialize meshes and number of nodes
     for(int jj = 0; jj < d_num_meters; ++jj)
     {
@@ -551,7 +553,7 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
     // reset the quad point maps
     d_quad_point_map.clear();
     d_quad_point_map.resize(finest_ln + 1);
-
+    
     // loop over levels and assign each quadrature point to one level
     for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
     {
@@ -855,7 +857,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         const double total_correction = SAMRAI_MPI::sumReduction(flux_correction);
         
         d_flow_values[jj] -= total_correction;
-        // d_flow_values[jj] -= flux_correction;
+        //d_flow_values[jj] -= flux_correction;
                 
         perr << " number of elem = " << count_elements << "\n";
         perr << " correction = " << flux_correction << "\n";
