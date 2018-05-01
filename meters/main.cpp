@@ -53,6 +53,7 @@
 #include "libmesh/face_tri3.h"
 #include "libmesh/mesh_generation.h"
 #include "libmesh/mesh_modification.h"
+#include "libmesh/parallel_mesh.h"
 
 // Headers for application-specific algorithm/data structure objects
 #include <boost/multi_array.hpp>
@@ -138,6 +139,9 @@ int main(int argc, char** argv)
         MeshTools::Modification::scale(mesh, 0.001);
         mesh.prepare_for_use();
         
+        //perr << "num nodes = " << mesh.n_nodes() << "\n";
+        //perr << "num nodes on proc = " << mesh.n_nodes_on_proc(0) << "\n";
+                        
         // build a test FE mesh
         /*const int num_nodes = 20;
         const double radius = 0.1;
@@ -279,7 +283,7 @@ int main(int argc, char** argv)
         EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
         ib_method_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
-             
+                     
         // initialize IBFE instrumentation
         IBFEInstrumentPanel instrument(input_db, 0);
         instrument.initializeHierarchyIndependentData(ib_method_ops);
@@ -395,7 +399,7 @@ int main(int argc, char** argv)
         u_hier_bdry_fill->fillData(loop_time);
                        
         instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
-        instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, iteration_num, loop_time);
+        instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
                 
         double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
@@ -457,7 +461,7 @@ int main(int argc, char** argv)
             velocity_stream << "\n"; */
             
             instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
-            instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, iteration_num, loop_time);
+            instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
             
             //************************************************
             

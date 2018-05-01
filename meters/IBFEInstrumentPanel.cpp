@@ -69,6 +69,7 @@
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
 #include "ibtk/IndexUtilities.h"
+#include "libmesh/serial_mesh.h"
 
 #include "BoxArray.h"
 
@@ -270,7 +271,6 @@ namespace
         return U;
     } // linear_interp
 }
-
     
 
 IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db,
@@ -368,6 +368,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
     temp_nodes.resize(d_num_meters);
     meter_centroids.resize(d_num_meters);
     
+    //perr << comm_in.rank() << " " << nodes.size() << "\n";
     // populate temp vectors
     for (int ii = 0; ii < nodes.size(); ++ii)
     {
@@ -382,7 +383,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
             }
         }
     }
-    
+        
     // loop over meters and sort the nodes
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
@@ -427,8 +428,8 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
    
     // initialize meshes and number of nodes
     for(int jj = 0; jj < d_num_meters; ++jj)
-        {
-        d_meter_meshes.push_back(new Mesh (comm_in, NDIM));
+    {
+        d_meter_meshes.push_back(new SerialMesh (comm_in, NDIM));
         std::ostringstream id; id << d_nodeset_IDs[jj];
         d_meter_mesh_names.push_back("meter_mesh_"+id.str());
         d_num_nodes[jj] = d_nodes[jj].size();
@@ -515,7 +516,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
         }
     }
     d_initialized = true;
-    
+      
 } // initializeHierarchyIndependentData
 
 void
@@ -550,7 +551,6 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
     // reset the quad point maps
     d_quad_point_map.clear();
     d_quad_point_map.resize(finest_ln + 1);
-
 
     // loop over levels and assign each quadrature point to one level
     for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
@@ -597,9 +597,9 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
             std::vector<dof_id_type> dof_indices;
             DenseMatrix<double> disp_coords;
             
-            // loop over elements in meter mesh
-            MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
-            const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
+            // loop over ALL elements in meter mesh, not just the local ones on this process!!
+            MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_elements_begin();
+            const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_elements_end();
             for ( ; el != end_el; ++el)
             {  
                 const Elem * elem = *el;
@@ -677,7 +677,6 @@ void
 IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                                         const int P_data_idx,
                                         const SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
-                                        const int timestep_num,
                                         const double data_time)
 {
     if (d_num_meters == 0) return;
@@ -775,9 +774,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     SAMRAI_MPI::sumReduction(&d_flow_values[0], d_num_meters);
     SAMRAI_MPI::sumReduction(&d_mean_pressure_values[0], d_num_meters);
     SAMRAI_MPI::sumReduction(&A[0], d_num_meters);
-    
-    std::cout << d_flow_values[0] << "\n";
-    
+        
     // Normalize the mean pressure.
     for (unsigned int jj = 0; jj < d_num_meters; ++jj)
     {
@@ -788,6 +785,9 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     // from the velocity of each meter mesh.
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
+        
+        perr << " flux before correction = " << d_flow_values[jj] << "\n";
+        
         // get displacement and velocity systems for meter mesh
         const LinearImplicitSystem& velocity_sys =
         d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
@@ -810,10 +810,15 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         double flux_correction = 0.0;
         MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
         const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
+        //MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_elements_begin();
+        //const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_elements_end();
+        int count_elements = 0;
         for ( ; el != end_el; ++el)
         {  
             const Elem * elem = *el;
             fe_elem->reinit(elem);
+            
+            count_elements += 1;
             
             // get dofs for displacement system and store in dense matrix
             vel_coords.resize( NDIM, phi.size() );
@@ -846,9 +851,19 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                 }         
             }
         }
-        d_flow_values[jj] -= flux_correction;
+        
+        const double total_correction = SAMRAI_MPI::sumReduction(flux_correction);
+        
+        d_flow_values[jj] -= total_correction;
+        // d_flow_values[jj] -= flux_correction;
+                
+        perr << " number of elem = " << count_elements << "\n";
+        perr << " correction = " << flux_correction << "\n";
+        perr << " flux after correction = " << d_flow_values[jj] << "\n";
         
     } // loop over meters
+    
+   
     
     // write data
     outputData(data_time);
@@ -925,6 +940,7 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
     const FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager(d_part);
     const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
     const System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+    // TO DO: find a better way to do this
     std::vector<double> dX_coords;
     dX_system.update_global_solution(dX_coords);
     //NumericVector<double>& dX_coords = *dX_system.current_local_solution;
@@ -934,12 +950,12 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
     //NumericVector<double>& U_coords = *U_system.current_local_solution;
     
     // get displacement and velocity systems for meter mesh
-    const LinearImplicitSystem& velocity_sys =
+    LinearImplicitSystem& velocity_sys =
     d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
     const unsigned int velocity_sys_num = velocity_sys.number();
     NumericVector<double>& velocity_coords = *velocity_sys.current_local_solution;
     
-    const LinearImplicitSystem& displacement_sys =
+    LinearImplicitSystem& displacement_sys =
     d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
     const unsigned int displacement_sys_num = displacement_sys.number();
     NumericVector<double>& displacement_coords = *displacement_sys.current_local_solution;
@@ -976,6 +992,9 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
         }
     }
     
+    displacement_sys.current_local_solution->close();
+    velocity_sys.current_local_solution->close();
+        
 } // updateSystemData
 
 void
@@ -1007,8 +1026,4 @@ IBFEInstrumentPanel::outputData(const double data_time)
         d_flux_stream << "\n";
     }
 }
-
-
-  
-
 

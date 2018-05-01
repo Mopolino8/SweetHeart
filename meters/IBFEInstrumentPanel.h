@@ -19,6 +19,7 @@
 #include "libmesh/exodusII_io.h"
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
+#include "libmesh/serial_mesh.h"
 
 #include <fstream>
 
@@ -47,7 +48,6 @@ public:
     void readInstrumentData(int U_data_idx,
                             int P_data_idx,
                             SAMRAI::tbox::Pointer<SAMRAI::hier::PatchHierarchy<NDIM> > hierarchy,
-                            int timestep_num,
                             double data_time);
     
   
@@ -111,7 +111,7 @@ private:
     std::vector<libMesh::ExodusII_IO*> d_exodus_io;
     
     // vector of meter mesh pointers
-    std::vector<libMesh::Mesh*> d_meter_meshes;
+    std::vector<libMesh::SerialMesh*> d_meter_meshes;
     
     // names for each meter mesh
     std::vector<std::string> d_meter_mesh_names;
