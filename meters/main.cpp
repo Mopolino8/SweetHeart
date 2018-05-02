@@ -318,20 +318,14 @@ int main(int argc, char** argv)
         
         // Open streams to save volume of structure.
         ofstream volume_stream;
-        ofstream pressure_stream;
-        ofstream velocity_stream;
-        ofstream flux_stream;
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.open("volume.curve", ios_base::out | ios_base::trunc);
-            pressure_stream.open("pressure.dat", ios_base::out | ios_base::trunc);
-            velocity_stream.open("velocity.dat", ios_base::out | ios_base::trunc);
-            flux_stream.open("flux.dat", ios_base::out | ios_base::trunc);
         }
         
         perr << "HERE 0\n";
         
-        // setting up some objects for computing mean pressure
+        // setting up some objects for measure fluxes and mean pressures
         VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
         Pointer<hier::Variable<NDIM> > p_var = navier_stokes_integrator->getPressureVariable();
         Pointer<VariableContext> p_current_ctx = navier_stokes_integrator->getCurrentContext();
@@ -339,15 +333,6 @@ int main(int argc, char** argv)
         Pointer<VariableContext> u_current_ctx = navier_stokes_integrator->getCurrentContext();
         const int p_current_idx = var_db->mapVariableAndContextToIndex(p_var, p_current_ctx);
         const int u_current_idx = var_db->mapVariableAndContextToIndex(u_var, u_current_ctx);
-        FEDataManager::InterpSpec interp_spec("PIECEWISE_LINEAR",
-                                                QGAUSS,
-                                                FIFTH,
-                                                /*use_adaptive_quadrature*/ false,
-                                                /*point_density*/ 2.0,
-                                                /*use_consistent_mass_matrix*/ true);
-        double MeanPressureData = 0.0;
-        double FluxData = 0.0;
-        libMesh::DenseVector<double> MeanVelocityData;
         const double current_time = 0.0;
         Pointer<SideVariable<NDIM, double> > u_copy_var = new SideVariable<NDIM, double>("u_copy");
         Pointer<CellVariable<NDIM, double> > p_copy_var = new CellVariable<NDIM, double>("p_copy");
@@ -411,8 +396,7 @@ int main(int argc, char** argv)
         instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
                 
         perr << "HERE 3\n";
-                    
-        
+                         
         double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
         {
@@ -455,22 +439,6 @@ int main(int argc, char** argv)
             
             u_hier_bdry_fill->initializeOperatorState(u_transaction_comp, patch_hierarchy);
             u_hier_bdry_fill->fillData(loop_time);
-                        
-           /* System& X_system = equation_systems->get_system<System>(IBFEMethod::COORDS_SYSTEM_NAME);
-            NumericVector<double>* X_vec = X_system.solution.get();
-            NumericVector<double>* X_ghost_vec = X_system.current_local_solution.get();
-            X_vec->localize(*X_ghost_vec);
-            System& U_system = equation_systems->get_system<System>(IBFEMethod::VELOCITY_SYSTEM_NAME);
-            NumericVector<double>* U_vec = U_system.solution.get();
-            NumericVector<double>* U_ghost_vec = U_system.current_local_solution.get();
-            U_vec->localize(*U_ghost_vec);
-            fe_data_manager->readPressureData(p_copy_idx, MeanPressureData, *X_ghost_vec, interp_spec);
-            fe_data_manager->readVelocityData(u_copy_idx, FluxData, MeanVelocityData, *X_ghost_vec, *U_ghost_vec, interp_spec);
-            pressure_stream << loop_time << " " << MeanPressureData << "\n";
-            flux_stream << loop_time << " " << FluxData << "\n";
-            velocity_stream << loop_time;
-            for(int dd = 0; dd < NDIM; ++dd) velocity_stream << " " << MeanVelocityData(dd);
-            velocity_stream << "\n"; */
                         
             instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
             instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
@@ -520,15 +488,11 @@ int main(int argc, char** argv)
             }
             
         }
-            
         
         // Close the logging streams.
         if (SAMRAI_MPI::getRank() == 0)
         {
             volume_stream.close();
-            pressure_stream.close();
-            velocity_stream.close();
-            flux_stream.close();
         }
 
         // Cleanup Eulerian boundary condition specification objects (when
