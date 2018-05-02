@@ -65,11 +65,11 @@
 #include "libmesh/numeric_vector.h"
 #include "libmesh/mesh_function.h"
 #include "libmesh/dense_vector.h"
+#include "libmesh/serial_mesh.h"
 
 #include "ibamr/IBFEMethod.h"
 #include "ibtk/FEDataManager.h"
 #include "ibtk/IndexUtilities.h"
-#include "libmesh/serial_mesh.h"
 
 #include "BoxArray.h"
 
@@ -477,6 +477,11 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
         displacement_sys.add_variable ("dX_0", static_cast<Order>(1), LAGRANGE);
         displacement_sys.add_variable ("dX_1", static_cast<Order>(1), LAGRANGE);
         displacement_sys.add_variable ("dX_2", static_cast<Order>(1), LAGRANGE);
+        
+        // we use these serialized vectors to store the DOFs for the systems on all processes.
+        velocity_sys.add_vector("serial solution", false, libMesh::SERIAL);
+        displacement_sys.add_vector("serial solution", false, libMesh::SERIAL);
+        
         d_meter_systems[jj]->init();
     }
     
@@ -584,6 +589,7 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
         {
             const LinearImplicitSystem& displacement_sys =
             d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
+            const NumericVector<double>& displacement_coords = displacement_sys.get_vector("serial solution");
             const DofMap& dof_map = displacement_sys.get_dof_map();
             FEType fe_type = displacement_sys.variable_type(0);
             
@@ -614,7 +620,7 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
                     dof_map.dof_indices (elem, dof_indices, d);
                     for (int nn = 0; nn < dof_indices.size(); ++nn)
                     {
-                        disp_coords(d,nn) =  (*displacement_sys.current_local_solution)(dof_indices[nn]);
+                        disp_coords(d,nn) =  displacement_coords(dof_indices[nn]);
                     }
                 }
 
@@ -749,8 +755,6 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                             const Vector U =
                             linear_interp(X, i, X_cell, *U_sc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
                             d_flow_values[meter_num] += ( U.dot(normal) ) * JxW;
-                            //std::cout << "X = " << X[0] << " " << X[1] << " " << X[2] << " \n";
-                            //std::cout << "normal = " << normal[0] << " " << normal[1] << " " << normal[2] << " \n";
                         }
                     }
                     if (P_cc_data)
@@ -793,6 +797,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         // get displacement and velocity systems for meter mesh
         const LinearImplicitSystem& velocity_sys =
         d_meter_systems[jj]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
+        const NumericVector<double>& velocity_coords = velocity_sys.get_vector("serial solution");
         const DofMap& dof_map = velocity_sys.get_dof_map();
         FEType fe_type = velocity_sys.variable_type(0);
         
@@ -812,15 +817,10 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         double flux_correction = 0.0;
         MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
         const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
-        //MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_elements_begin();
-        //const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_elements_end();
-        int count_elements = 0;
         for ( ; el != end_el; ++el)
         {  
             const Elem * elem = *el;
             fe_elem->reinit(elem);
-            
-            count_elements += 1;
             
             // get dofs for displacement system and store in dense matrix
             vel_coords.resize( NDIM, phi.size() );
@@ -829,7 +829,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                 dof_map.dof_indices (elem, dof_indices, d);
                 for (int nn = 0; nn < dof_indices.size(); ++nn)
                 {
-                    vel_coords(d,nn) =  (*velocity_sys.current_local_solution)(dof_indices[nn]);
+                    vel_coords(d,nn) =  velocity_coords(dof_indices[nn]);
                 }
             }
             
@@ -855,18 +855,13 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         }
         
         const double total_correction = SAMRAI_MPI::sumReduction(flux_correction);
-        
         d_flow_values[jj] -= total_correction;
-        //d_flow_values[jj] -= flux_correction;
                 
-        perr << " number of elem = " << count_elements << "\n";
         perr << " correction = " << flux_correction << "\n";
         perr << " flux after correction = " << d_flow_values[jj] << "\n";
         
     } // loop over meters
-    
-   
-    
+       
     // write data
     outputData(data_time);
     
@@ -955,14 +950,16 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
     LinearImplicitSystem& velocity_sys =
     d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
     const unsigned int velocity_sys_num = velocity_sys.number();
-    NumericVector<double>& velocity_coords = *velocity_sys.current_local_solution;
+    //NumericVector<double>& velocity_coords = *velocity_sys.current_local_solution;
+    NumericVector<double>& velocity_coords = velocity_sys.get_vector("serial solution");
     
     LinearImplicitSystem& displacement_sys =
     d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
     const unsigned int displacement_sys_num = displacement_sys.number();
-    NumericVector<double>& displacement_coords = *displacement_sys.current_local_solution;
+    //NumericVector<double>& displacement_coords = *displacement_sys.current_local_solution;
+    NumericVector<double>& displacement_coords = displacement_sys.get_vector("serial solution");
         
-    // loop over nodes
+    // loop over all nodes in meter mesh
     for (int ii = 0; ii < d_num_nodes[meter_mesh_number]; ++ii)
     {
         // get node on meter mesh
@@ -994,8 +991,8 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
         }
     }
     
-    displacement_sys.current_local_solution->close();
-    velocity_sys.current_local_solution->close();
+    //displacement_sys.current_local_solution->close();
+    //velocity_sys.current_local_solution->close();
         
 } // updateSystemData
 

@@ -284,7 +284,6 @@ int main(int argc, char** argv)
         ib_method_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
                      
-        perr << "HERE -1 \n";
 
         // initialize IBFE instrumentation
         IBFEInstrumentPanel instrument(input_db, 0);
@@ -323,7 +322,6 @@ int main(int argc, char** argv)
             volume_stream.open("volume.curve", ios_base::out | ios_base::trunc);
         }
         
-        perr << "HERE 0\n";
         
         // setting up some objects for measure fluxes and mean pressures
         VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
@@ -353,9 +351,7 @@ int main(int argc, char** argv)
         // Main time step loop.
         double loop_time_end = time_integrator->getEndTime();
                 
-        perr << "HERE 1\n";
-                    
-        
+                            
         // **********************************************
         // get mean pressure and velocity on surface mesh
         //***********************************************
@@ -369,7 +365,7 @@ int main(int argc, char** argv)
         typedef HierarchyGhostCellInterpolation::InterpolationTransactionComponent InterpolationTransactionComponent;
         std::vector<InterpolationTransactionComponent> p_transaction_comp(1);
         p_transaction_comp[0] = InterpolationTransactionComponent(p_copy_idx,
-                "LINEAR_REFINE",
+                "CONSERVATIVE_LINEAR_REFINE",
                 /*use_cf_bdry_interpolation*/ false,
                 "CONSERVATIVE_COARSEN",
                 "LINEAR");
@@ -390,12 +386,12 @@ int main(int argc, char** argv)
         u_hier_bdry_fill->initializeOperatorState(u_transaction_comp, patch_hierarchy);
         u_hier_bdry_fill->fillData(loop_time);
                        
-        perr << "HERE 2\n";
         
         instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
+        
+        
         instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
                 
-        perr << "HERE 3\n";
                          
         double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
