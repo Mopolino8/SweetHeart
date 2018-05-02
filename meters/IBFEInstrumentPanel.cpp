@@ -495,8 +495,8 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
         QGauss qrule(NDIM-1, d_quad_order);
         fe_elem->attach_quadrature_rule(&qrule);
         const std::vector<libMesh::Point>& qp_points = fe_elem->get_xyz();
-        MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
-        const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
+        MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_elements_begin();
+        const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_elements_end();
         for ( ; el != end_el; ++el)
         {  
             const Elem * elem = *el;
@@ -815,6 +815,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         
         // loop over elements again to compute mass flux and mean pressure
         double flux_correction = 0.0;
+        double area = 0.0;
         MeshBase::const_element_iterator el = d_meter_meshes[jj]->active_local_elements_begin();
         const MeshBase::const_element_iterator end_el = d_meter_meshes[jj]->active_local_elements_end();
         for ( ; el != end_el; ++el)
@@ -838,6 +839,8 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
             const libMesh::Point foo2 = *elem->node_ptr(2) - *elem->node_ptr(1);
             const libMesh::Point normal = (foo1.cross(foo2)).unit();
             
+            area += 0.5 * (foo1.cross(foo2)).norm();
+            
             // loop over quadrature points
             double vel_comp;
             for (int qp = 0; qp < qp_points.size(); ++qp)
@@ -859,6 +862,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                 
         perr << " correction = " << flux_correction << "\n";
         perr << " flux after correction = " << d_flow_values[jj] << "\n";
+        perr << " area = " << area << "\n";
         
     } // loop over meters
        
@@ -938,25 +942,23 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
     const EquationSystems* equation_systems = fe_data_manager->getEquationSystems();
     const System& dX_system = equation_systems->get_system(IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
     // TO DO: find a better way to do this
-    std::vector<double> dX_coords;
-    dX_system.update_global_solution(dX_coords);
-    //NumericVector<double>& dX_coords = *dX_system.current_local_solution;
+    std::vector<double> dX_coords_parent;
+    dX_system.update_global_solution(dX_coords_parent);
     const System& U_system = equation_systems->get_system(IBFEMethod::VELOCITY_SYSTEM_NAME);
-    std::vector<double> U_coords;
-    U_system.update_global_solution(U_coords);
-    //NumericVector<double>& U_coords = *U_system.current_local_solution;
+    std::vector<double> U_coords_parent;
+    U_system.update_global_solution(U_coords_parent);
     
     // get displacement and velocity systems for meter mesh
     LinearImplicitSystem& velocity_sys =
     d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::VELOCITY_SYSTEM_NAME);
     const unsigned int velocity_sys_num = velocity_sys.number();
-    //NumericVector<double>& velocity_coords = *velocity_sys.current_local_solution;
+    NumericVector<double>& velocity_solution = *velocity_sys.solution;
     NumericVector<double>& velocity_coords = velocity_sys.get_vector("serial solution");
     
     LinearImplicitSystem& displacement_sys =
     d_meter_systems[meter_mesh_number]->get_system<LinearImplicitSystem> (IBFEMethod::COORD_MAPPING_SYSTEM_NAME);
     const unsigned int displacement_sys_num = displacement_sys.number();
-    //NumericVector<double>& displacement_coords = *displacement_sys.current_local_solution;
+    NumericVector<double>& displacement_solution = *displacement_sys.solution;
     NumericVector<double>& displacement_coords = displacement_sys.get_vector("serial solution");
         
     // loop over all nodes in meter mesh
@@ -968,16 +970,13 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
         // get corresponding dofs on parent mesh
         std::vector<double> U_dofs;
         U_dofs.resize(NDIM);
-        //U_coords.get(d_U_dof_idx[meter_mesh_number][ii], U_dofs);
-        
         std::vector<double> dX_dofs;
         dX_dofs.resize(NDIM);
-        //dX_coords.get(d_dX_dof_idx[meter_mesh_number][ii], dX_dofs);
         
         for (int d = 0; d < NDIM; ++d)
         {
-            U_dofs[d] = U_coords[d_U_dof_idx[meter_mesh_number][ii][d]];
-            dX_dofs[d] = dX_coords[d_dX_dof_idx[meter_mesh_number][ii][d]];
+            U_dofs[d] = U_coords_parent[d_U_dof_idx[meter_mesh_number][ii][d]];
+            dX_dofs[d] = dX_coords_parent[d_dX_dof_idx[meter_mesh_number][ii][d]];
         }
         
         // set dofs in meter mesh to correspond to the same values
@@ -991,9 +990,23 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
         }
     }
     
-    //displacement_sys.current_local_solution->close();
-    //velocity_sys.current_local_solution->close();
-        
+    // populate solution vector in system also... why not?
+    MeshBase::const_node_iterator node_it = d_meter_meshes[meter_mesh_number]->local_nodes_begin();
+    const MeshBase::const_node_iterator end_node_it = d_meter_meshes[meter_mesh_number]->local_nodes_end();
+    for ( ; node_it != end_node_it; ++node_it)
+    {  
+        const Node* node = *node_it;
+        for (int d = 0; d < NDIM; ++d)
+        {
+            const int vel_dof_idx = node->dof_number(velocity_sys_num, d, 0);
+            velocity_solution.set(vel_dof_idx, velocity_coords(vel_dof_idx));
+            const int disp_dof_idx = node->dof_number(displacement_sys_num, d, 0);
+            displacement_solution.set(disp_dof_idx, displacement_coords(disp_dof_idx));
+        } 
+    }
+    velocity_solution.close();
+    displacement_solution.close();
+              
 } // updateSystemData
 
 void
