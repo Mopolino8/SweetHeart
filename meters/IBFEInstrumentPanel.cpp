@@ -430,7 +430,8 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
             max_dist = std::numeric_limits<double>::max();
         }
     } // loop over meters
-       
+    
+           
     // initialize meshes and number of nodes
     for(int jj = 0; jj < d_num_meters; ++jj)
     {
@@ -463,6 +464,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
             elem->set_node(2) = d_meter_meshes[ii]->node_ptr(jj+2);
         }
         d_meter_meshes[ii]->prepare_for_use();
+        d_meter_meshes[ii]->print_info(perr);
         d_exodus_io.push_back(new ExodusII_IO(*d_meter_meshes[ii]));
     } // loop over meters
     
@@ -700,9 +702,16 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     std::fill(d_mean_pressure_values.begin(), d_mean_pressure_values.end(), 0.0);
     std::vector<double> A(d_num_meters, 0.0);
     
+    int count_qp = 0;
+    
+    int count_qp_2 = 0;
+    
     // compute flow and mean pressure on mesh meters
     for (int ln = coarsest_ln; ln <= finest_ln; ++ln)
     {
+        
+        count_qp += d_quad_point_map[ln].size();
+        
         Pointer<PatchLevel<NDIM> > level = hierarchy->getPatchLevel(ln);
         for (PatchLevel<NDIM>::Iterator p(level); p; p++)
         {
@@ -771,6 +780,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                             linear_interp(X, i, X_cell, *P_cc_data, patch_lower, patch_upper, x_lower, x_upper, dx);
                             d_mean_pressure_values[meter_num] += P * JxW;
                             A[meter_num] += JxW;
+                            count_qp_2 += 1;
                         }
                     }
                 }
@@ -778,7 +788,12 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
             }
         }
     }
-       
+     
+    perr << " num qp in map = " << count_qp << "\n";
+    perr << " num qp after counting = " << count_qp_2 << "\n";
+    perr << " actual num qp = " << d_num_quad_points[0] << "\n";
+    perr << " flux before sum reduction = " << d_flow_values[0] << "\n";
+    
     // Synchronize the values across all processes.
     SAMRAI_MPI::sumReduction(&d_flow_values[0], d_num_meters);
     SAMRAI_MPI::sumReduction(&d_mean_pressure_values[0], d_num_meters);
@@ -863,9 +878,9 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         const double total_correction = SAMRAI_MPI::sumReduction(flux_correction);
         d_flow_values[jj] -= total_correction;
                 
-        perr << " correction = " << flux_correction << "\n";
-        perr << " flux after correction = " << d_flow_values[jj] << "\n";
-        perr << " area = " << area << "\n";
+       // perr << " correction = " << total_correction << "\n";
+       // perr << " flux after correction = " << d_flow_values[jj] << "\n";
+       perr << " area = " << A[jj] << "\n";
         
     } // loop over meters
        

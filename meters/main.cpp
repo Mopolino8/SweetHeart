@@ -364,7 +364,7 @@ int main(int argc, char** argv)
         instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
                 
                      
-        //return 0;
+        return 0;
         
         double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
