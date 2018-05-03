@@ -292,9 +292,8 @@ int main(int argc, char** argv)
         {
             volume_stream.open("volume.curve", ios_base::out | ios_base::trunc);
         }
-        
-        
-        // setting up some objects for measure fluxes and mean pressures
+             
+        // setting up some objects for measuring fluxes and mean pressures
         VariableDatabase<NDIM>* var_db = VariableDatabase<NDIM>::getDatabase();
         Pointer<hier::Variable<NDIM> > p_var = navier_stokes_integrator->getPressureVariable();
         Pointer<VariableContext> p_current_ctx = navier_stokes_integrator->getCurrentContext();
@@ -321,8 +320,7 @@ int main(int argc, char** argv)
         
         // Main time step loop.
         double loop_time_end = time_integrator->getEndTime();
-                
-                            
+                                  
         // **********************************************
         // get mean pressure and velocity on surface mesh
         //***********************************************
@@ -357,15 +355,10 @@ int main(int argc, char** argv)
         u_hier_bdry_fill->initializeOperatorState(u_transaction_comp, patch_hierarchy);
         u_hier_bdry_fill->fillData(loop_time);
                        
-        
+        // read instrument data
         instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
-        
-        
         instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
                 
-                     
-        return 0;
-        
         double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
         {

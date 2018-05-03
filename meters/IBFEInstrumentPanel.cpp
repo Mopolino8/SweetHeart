@@ -464,7 +464,6 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
             elem->set_node(2) = d_meter_meshes[ii]->node_ptr(jj+2);
         }
         d_meter_meshes[ii]->prepare_for_use();
-        d_meter_meshes[ii]->print_info(perr);
         d_exodus_io.push_back(new ExodusII_IO(*d_meter_meshes[ii]));
     } // loop over meters
     
@@ -789,10 +788,10 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
         }
     }
      
-    perr << " num qp in map = " << count_qp << "\n";
+    /*perr << " num qp in map = " << count_qp << "\n";
     perr << " num qp after counting = " << count_qp_2 << "\n";
     perr << " actual num qp = " << d_num_quad_points[0] << "\n";
-    perr << " flux before sum reduction = " << d_flow_values[0] << "\n";
+    perr << " flux before sum reduction = " << d_flow_values[0] << "\n";*/
     
     // Synchronize the values across all processes.
     SAMRAI_MPI::sumReduction(&d_flow_values[0], d_num_meters);
@@ -810,7 +809,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
     for (int jj = 0; jj < d_num_meters; ++jj)
     {
         
-        perr << " flux before correction = " << d_flow_values[jj] << "\n";
+        //perr << " flux before correction = " << d_flow_values[jj] << "\n";
         
         // get displacement and velocity systems for meter mesh
         const LinearImplicitSystem& velocity_sys =
@@ -880,7 +879,7 @@ IBFEInstrumentPanel::readInstrumentData(const int U_data_idx,
                 
        // perr << " correction = " << total_correction << "\n";
        // perr << " flux after correction = " << d_flow_values[jj] << "\n";
-       perr << " area = " << A[jj] << "\n";
+       // perr << " area = " << A[jj] << "\n";
         
     } // loop over meters
        
