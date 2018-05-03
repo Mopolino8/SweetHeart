@@ -132,42 +132,13 @@ int main(int argc, char** argv)
         const bool dump_timer_data = app_initializer->dumpTimerData();
         const int timer_dump_interval = app_initializer->getTimerDumpInterval();
 
-        // Create a simple FE mesh.                                                                                                                                     
+        // bring in small cylinder mesh
         Mesh mesh(init.comm(), NDIM);
         ExodusII_IO mesh_reader(mesh);
-        mesh_reader.read("cylinder_test.e");
+        mesh_reader.read("small_cylinder.e");
         MeshTools::Modification::scale(mesh, 0.001);
         mesh.prepare_for_use();
-        
-        //perr << "num nodes = " << mesh.n_nodes() << "\n";
-        //perr << "num nodes on proc = " << mesh.n_nodes_on_proc(0) << "\n";
-                        
-        // build a test FE mesh
-        /*const int num_nodes = 20;
-        const double radius = 0.1;
-        Mesh mesh(init.comm());
-        mesh.set_spatial_dimension(NDIM);
-        mesh.set_mesh_dimension(NDIM - 1);
-        mesh.reserve_nodes(num_nodes);
-        mesh.reserve_elem(num_nodes-2);
-        for(int jj = 0; jj < num_nodes; ++jj)
-        {
-            const double foo1 = radius * cos(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
-            const double foo2 = radius * sin(2.0 * libMesh::pi * static_cast<double>(jj)/static_cast<double>(num_nodes)) + 0.5; 
-            const libMesh::Point foo(foo1, foo2, 0.5);
-            mesh.add_point(foo, jj);  
-        }
-        for(int jj = 0; jj < num_nodes - 2; ++jj)
-        {
-            Elem* elem = new Tri3;
-            elem->set_id(jj);
-            elem = mesh.add_elem(elem);
-            elem->set_node(0) = mesh.node_ptr(0);
-            elem->set_node(1) = mesh.node_ptr(jj+1);
-            elem->set_node(2) = mesh.node_ptr(jj+2);
-        }
-        mesh.prepare_for_use();*/
-                
+            
         // Create major algorithm and data objects that comprise the
         // application.  These objects are configured from the input database
         // and, if this is a restarted run, from the restart database.
@@ -393,7 +364,7 @@ int main(int argc, char** argv)
         instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
                 
                      
-        return 0;
+        //return 0;
         
         double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())

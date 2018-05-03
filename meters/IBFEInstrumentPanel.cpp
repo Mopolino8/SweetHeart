@@ -296,8 +296,11 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_plot_directory_name(NDIM == 2 ? "viz_inst2d" : "viz_inst3d")
 {
     // get input data
-    IBFEInstrumentPanel::getFromInput(input_db);
-
+    IBFEInstrumentPanel::getFromInput(input_db);    
+    
+    // make plot directory
+    Utilities::recursiveMkdir(d_plot_directory_name);
+    
     // set up file streams
     if (SAMRAI_MPI::getRank() == 0)
     {
@@ -1014,10 +1017,7 @@ IBFEInstrumentPanel::outputMeterMeshes(const int timestep_num,
                                        const double data_time)
 {
      // things to do at initial timestep
-    if(timestep_num == 1); 
-    {
-        outputNodes();
-    }
+    if(timestep_num == 1) outputNodes();
     outputExodus(timestep_num, data_time);
 }
 
