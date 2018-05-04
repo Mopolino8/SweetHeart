@@ -123,7 +123,7 @@ gcoef_function_5 = "0.0"
 
 VelocityInitialConditions {
 
-    V_background = 50.0
+    V_background = 0.0
     V_peak = 100.0
      
     function_2 = "0.0"  
@@ -220,7 +220,7 @@ Main {
 
 // visualization dump parameters
    viz_writer                  = "VisIt","ExodusII"
-   viz_dump_interval           = 5
+   viz_dump_interval           = 0
    viz_dump_dirname            = "viz_IB3d"
    visit_number_procs_per_file = 1
 

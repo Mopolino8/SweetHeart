@@ -310,8 +310,8 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_mean_pressure_stream.open(press_output.str().c_str());
         flux_output << d_plot_directory_name << "/" << "" << "flux.dat";
         d_flux_stream.open(flux_output.str().c_str());
-        d_mean_pressure_stream.precision(10);
-        d_flux_stream.precision(10);
+        d_mean_pressure_stream.precision(15);
+        d_flux_stream.precision(15);
     }
 }
 
