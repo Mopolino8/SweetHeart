@@ -255,7 +255,6 @@ int main(int argc, char** argv)
         ib_method_ops->initializeFEData();
         time_integrator->initializePatchHierarchy(patch_hierarchy, gridding_algorithm);
                      
-
         // initialize IBFE instrumentation
         IBFEInstrumentPanel instrument(input_db, 0);
         instrument.initializeHierarchyIndependentData(ib_method_ops);
@@ -317,9 +316,6 @@ int main(int argc, char** argv)
             level->allocatePatchData(u_copy_idx, current_time);
             level->allocatePatchData(p_copy_idx, current_time);
         }
-        
-        // Main time step loop.
-        double loop_time_end = time_integrator->getEndTime();
                                   
         // **********************************************
         // get mean pressure and velocity on surface mesh
@@ -358,7 +354,9 @@ int main(int argc, char** argv)
         // read instrument data
         instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
         instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
-                
+                        
+         // Main time step loop.
+        double loop_time_end = time_integrator->getEndTime();
         double dt = 0.0;
         while (!MathUtilities<double>::equalEps(loop_time, loop_time_end) && time_integrator->stepsRemaining())
         {
