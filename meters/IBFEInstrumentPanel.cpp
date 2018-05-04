@@ -79,7 +79,6 @@
 // static functions
 namespace
 {
-    
     double
     linear_interp(const Vector& X,
             const Index<NDIM>& i_cell,
@@ -272,7 +271,9 @@ namespace
     } // linear_interp
 }
     
-
+//**********************************************
+// constructor
+//**********************************************
 IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Database> input_db,
         const int part)
 :       d_num_meters(0),
@@ -284,7 +285,7 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_num_nodes(),
         d_U_dof_idx(),        
         d_dX_dof_idx(),
-        d_nodeset_IDs(),
+        d_nodeset_IDs_for_meters(),
         d_meter_meshes(),
         d_meter_systems(),
         d_meter_mesh_names(),
@@ -313,9 +314,11 @@ IBFEInstrumentPanel::IBFEInstrumentPanel(SAMRAI::tbox::Pointer<SAMRAI::tbox::Dat
         d_mean_pressure_stream.precision(15);
         d_flux_stream.precision(15);
     }
-}
+} // constructor
 
-
+//**********************************************
+// destructor
+//**********************************************
 IBFEInstrumentPanel::~IBFEInstrumentPanel() 
 {
       // Close the log file stream.
@@ -331,10 +334,10 @@ IBFEInstrumentPanel::~IBFEInstrumentPanel()
         delete d_meter_meshes[ii];
         delete d_meter_systems[ii];
     }
-}
+} // destructor
 
 //**********************************************
-// initialize data
+// initialize data which is independent of the Cartesian hierarchy
 //**********************************************
 void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* ib_method_ops)
 {
@@ -360,7 +363,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
     boundary_info.build_node_list (nodes, bcs);
     
     // resize members and local variables
-    d_num_meters = d_nodeset_IDs.size();
+    d_num_meters = d_nodeset_IDs_for_meters.size();
     d_num_quad_points.resize(d_num_meters);
     d_U_dof_idx.resize(d_num_meters);
     d_dX_dof_idx.resize(d_num_meters);
@@ -373,13 +376,12 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
     temp_nodes.resize(d_num_meters);
     meter_centroids.resize(d_num_meters);
         
-    //perr << comm_in.rank() << " " << nodes.size() << "\n";
     // populate temp vectors
     for (int ii = 0; ii < nodes.size(); ++ii)
     {
-        for (int jj = 0; jj < d_nodeset_IDs.size(); ++jj)
+        for (int jj = 0; jj < d_nodeset_IDs_for_meters.size(); ++jj)
         {
-            if(d_nodeset_IDs[jj] == bcs[ii])
+            if(d_nodeset_IDs_for_meters[jj] == bcs[ii])
             {
                 temp_node_dof_IDs[jj].push_back(nodes[ii]);
                 const Node* node = &mesh->node_ref(nodes[ii]);
@@ -436,7 +438,7 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
     for(int jj = 0; jj < d_num_meters; ++jj)
     {
         d_meter_meshes.push_back(new SerialMesh (comm_in, NDIM));
-        std::ostringstream id; id << d_nodeset_IDs[jj];
+        std::ostringstream id; id << d_nodeset_IDs_for_meters[jj];
         d_meter_mesh_names.push_back("meter_mesh_"+id.str());
         d_num_nodes[jj] = d_nodes[jj].size();
     }
@@ -530,6 +532,9 @@ void IBFEInstrumentPanel::initializeHierarchyIndependentData(IBAMR::IBFEMethod* 
       
 } // initializeHierarchyIndependentData
 
+//**********************************************
+// initialize data which depends on the Cartesian hierarchy
+//**********************************************
 void
 IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_method_ops,
                                                       const Pointer<PatchHierarchy<NDIM> > hierarchy)
@@ -680,7 +685,7 @@ IBFEInstrumentPanel::initializeHierarchyDependentData(IBAMR::IBFEMethod* ib_meth
             }
         }
     }
-}
+} // initializeHierarchyDependentData
 
 //**********************************************
 // read instrument data
@@ -937,7 +942,7 @@ IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
     TBOX_ASSERT(db);
 #endif
     if (db->keyExists("plot_directory_name")) d_plot_directory_name = db->getString("plot_directory_name");
-    if (db->keyExists("nodeset_IDs")) d_nodeset_IDs = db->getIntegerArray("nodeset_IDs");
+    if (db->keyExists("nodeset_IDs_for_meters")) d_nodeset_IDs_for_meters = db->getIntegerArray("nodeset_IDs_for_meters");
     if (db->keyExists("meter_mesh_quad_order")) d_quad_order 
             = Utility::string_to_enum<Order>(db->getStringWithDefault("meter_mesh_quad_order", "SECOND"));
     return;
@@ -948,7 +953,6 @@ IBFEInstrumentPanel::getFromInput(Pointer<Database> db)
 //**********************************************
 // update system data
 //**********************************************
-
 void
 IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
                                       const int meter_mesh_number)
@@ -1026,6 +1030,9 @@ IBFEInstrumentPanel::updateSystemData(IBAMR::IBFEMethod* ib_method_ops,
               
 } // updateSystemData
 
+//**********************************************
+// output mesh info
+//**********************************************
 void
 IBFEInstrumentPanel::outputMeterMeshes(const int timestep_num,
                                        const double data_time)
@@ -1033,8 +1040,11 @@ IBFEInstrumentPanel::outputMeterMeshes(const int timestep_num,
      // things to do at initial timestep
     if(timestep_num == 1) outputNodes();
     outputExodus(timestep_num, data_time);
-}
+}// outputMeterMeshes
 
+//**********************************************
+// output data read from the meters
+//**********************************************
 void
 IBFEInstrumentPanel::outputData(const double data_time)
 {
@@ -1051,5 +1061,5 @@ IBFEInstrumentPanel::outputData(const double data_time)
         d_mean_pressure_stream << "\n";
         d_flux_stream << "\n";
     }
-}
+} // outputData
 

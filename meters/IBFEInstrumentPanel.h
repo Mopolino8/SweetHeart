@@ -118,7 +118,7 @@ private:
 
     // contains the nodeset IDs on the parent mesh, for the nodesets
     // from which the meter meshes are built    
-    SAMRAI::tbox::Array<int> d_nodeset_IDs;
+    SAMRAI::tbox::Array<int> d_nodeset_IDs_for_meters;
 
     // things for data io
     std::vector<double> d_flow_values, d_mean_pressure_values;
