@@ -73,6 +73,21 @@
 // other things
 #include "IBFEInstrumentPanel.h"
 
+void
+PK1_stress_function(TensorValue<double>& PP,
+                    const TensorValue<double>& FF,
+                    const libMesh::Point& /*X*/,
+                    const libMesh::Point& /*s*/,
+                    Elem* const /*elem*/,
+                    const std::vector<const std::vector<double>*>& /*var_data*/,
+                    const std::vector<const std::vector<VectorValue<double> >*>& /*grad_var_data*/,
+                    double /*time*/,
+                    void* /*ctx*/)
+{
+    PP.zero();
+    return;
+} // PK1_stress_function
+
 // Function prototypes
 void output_data(Pointer<PatchHierarchy<NDIM> > patch_hierarchy,
                  Pointer<INSHierarchyIntegrator> navier_stokes_integrator,
@@ -191,6 +206,7 @@ int main(int argc, char** argv)
         // Configure the IBFE solver.
         ib_method_ops->initializeFEEquationSystems();
         FEDataManager* fe_data_manager = ib_method_ops->getFEDataManager();
+        ib_method_ops->registerPK1StressFunction(PK1_stress_function);
   
         // setup libmesh things for eliminating pressure jumps
         if (input_db->getBoolWithDefault("ELIMINATE_PRESSURE_JUMPS", false))
