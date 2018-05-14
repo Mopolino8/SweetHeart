@@ -84,11 +84,6 @@ void parse_ID_string(std::vector<int>& IDs, const std::string& IDs_string)
 void assemble_ipdg_poisson(EquationSystems & es,
         const std::string & system_name)
 {
-    
-    std::cout << "------------------------------"  << std::endl; 
-    std::cout << "in IPDG assemble" << std::endl;
-    std::cout << "------------------------------"  << std::endl; 
-    
     const MeshBase & mesh = es.get_mesh();
     const BoundaryInfo& boundary_info = *mesh.boundary_info;
     const PointLocatorList& point_locator(mesh);
@@ -561,6 +556,9 @@ int main (int argc, char** argv)
   LinearImplicitSystem& fiber_sys_x = equation_system.add_system<LinearImplicitSystem> ("fiber_sys_x");
   LinearImplicitSystem& fiber_sys_y = equation_system.add_system<LinearImplicitSystem> ("fiber_sys_y");
   LinearImplicitSystem& fiber_sys_z = equation_system.add_system<LinearImplicitSystem> ("fiber_sys_z");
+  LinearImplicitSystem& x_fiber_sys_x = equation_system.add_system<LinearImplicitSystem> ("x_fiber_sys_x");
+  LinearImplicitSystem& x_fiber_sys_y = equation_system.add_system<LinearImplicitSystem> ("x_fiber_sys_y");
+  LinearImplicitSystem& x_fiber_sys_z = equation_system.add_system<LinearImplicitSystem> ("x_fiber_sys_z");
   
   // add variables to system, attach assemble function, and initialize system
   if(continuous_galerkin)
@@ -574,9 +572,13 @@ int main (int argc, char** argv)
       poisson_system_2.add_variable ("poisson_2", p_order, MONOMIAL);
   }
 
+  // adding variables for fibers and cross fibers
   fiber_sys_x.add_variable ("fibersx", CONSTANT, MONOMIAL);
   fiber_sys_y.add_variable ("fibersy", CONSTANT, MONOMIAL); 
   fiber_sys_z.add_variable ("fibersz", CONSTANT, MONOMIAL);
+  x_fiber_sys_x.add_variable ("xfibersx", CONSTANT, MONOMIAL);
+  x_fiber_sys_y.add_variable ("xfibersy", CONSTANT, MONOMIAL); 
+  x_fiber_sys_z.add_variable ("xfibersz", CONSTANT, MONOMIAL);
 
   poisson_system_1.attach_assemble_function (assemble_ipdg_poisson);
   poisson_system_2.attach_assemble_function (assemble_ipdg_poisson);
@@ -644,7 +646,9 @@ int main (int argc, char** argv)
       component(0) = normalized_cross(0); fiber_sys_x.solution->add_vector(component, fiber_dof_indices);
       component(0) = normalized_cross(1); fiber_sys_y.solution->add_vector(component, fiber_dof_indices);
       component(0) = normalized_cross(2); fiber_sys_z.solution->add_vector(component, fiber_dof_indices);
-      
+      component(0) = normalized_grad_1(0); x_fiber_sys_x.solution->add_vector(component, fiber_dof_indices);
+      component(0) = normalized_grad_1(1); x_fiber_sys_y.solution->add_vector(component, fiber_dof_indices);
+      component(0) = normalized_grad_1(2); x_fiber_sys_z.solution->add_vector(component, fiber_dof_indices);
   }
   
 #ifdef LIBMESH_HAVE_EXODUS_API

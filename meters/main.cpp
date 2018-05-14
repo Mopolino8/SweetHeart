@@ -71,7 +71,7 @@
 #include <ibamr/app_namespaces.h>
 
 // other things
-#include "IBFEInstrumentPanel.h"
+#include "ibamr/IBFEInstrumentPanel.h"
 
 void
 PK1_stress_function(TensorValue<double>& PP,
@@ -347,9 +347,9 @@ int main(int argc, char** argv)
         std::vector<InterpolationTransactionComponent> p_transaction_comp(1);
         p_transaction_comp[0] = InterpolationTransactionComponent(p_copy_idx,
                 "CONSERVATIVE_LINEAR_REFINE",
-                /*use_cf_bdry_interpolation*/ false,
+                /*use_cf_bdry_interpolation*/ false, 
                 "CONSERVATIVE_COARSEN",
-                "LINEAR");
+                "LINEAR"); 
         
         Pointer<HierarchyGhostCellInterpolation> p_hier_bdry_fill = new HierarchyGhostCellInterpolation();
         p_hier_bdry_fill->initializeOperatorState(p_transaction_comp, patch_hierarchy);
@@ -369,8 +369,8 @@ int main(int argc, char** argv)
                        
         // read instrument data
         instrument.initializeHierarchyDependentData(ib_method_ops, patch_hierarchy);
-        instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time);
-                        
+        instrument.readInstrumentData(u_copy_idx, p_copy_idx, patch_hierarchy, loop_time); 
+                
          // Main time step loop.
         double loop_time_end = time_integrator->getEndTime();
         double dt = 0.0;
