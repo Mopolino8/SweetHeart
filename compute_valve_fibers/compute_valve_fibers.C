@@ -600,6 +600,7 @@ int main (int argc, char** argv)
   
   std::cout << "solving second system....\n";
   equation_system.parameters.set<int>("system_flag") = 2;
+  zero_IDs.clear(); one_IDs.clear();
   parse_ID_string(zero_IDs, zero_IDs_string_2);
   parse_ID_string(one_IDs, one_IDs_string_2);
   equation_system.parameters.set<std::vector<int> >("zero IDs") = zero_IDs;
