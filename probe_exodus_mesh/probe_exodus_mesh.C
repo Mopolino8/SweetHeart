@@ -45,21 +45,42 @@ int main (int argc, char** argv)
 {
     LibMeshInit init(argc, argv);
     
-    // Note that boundary condition data must be registered with each FE
-    // system before calling IBFEMethod::initializeFEData().
-    Mesh mesh(init.comm(), 2);
-    MeshTools::Generation::build_square(mesh, 2, 2, 0.0, 1.0, 0.0, 1, QUAD4);
+    //Parse the input file
+    GetPot input_file(argv[1]);
     
-    // Create an equation system object
-    EquationSystems equation_system (mesh);
+    const std::string mesh_name                  = input_file("mesh_name","");
+    const unsigned int dim                       = input_file("dimension", 3);
+  
+    Mesh mesh(init.comm(), dim);
+   
+    ExodusII_IO mesh_reader(mesh);
+    mesh_reader.read(mesh_name);  
     
-    // Create a system named ellipticdg
-    LinearImplicitSystem & system = equation_system.add_system<LinearImplicitSystem> ("test");
-    
-    system.add_variable ("u", FIRST, LAGRANGE);
-    system.init();
-    
-    system.solution->print();
+    // print out block IDs
+    std::map<short unsigned int, std::string> block_map =  mesh.get_subdomain_name_map();
+    std::map<short unsigned int, std::string>::iterator jj; 
+    std::cout << "\n block IDs and names are... \n";
+    for(jj = block_map.begin(); jj != block_map.end(); ++jj)
+    {
+        std::cout << jj->first <<" " << jj->second << std::endl;
+    }
+    // print out sideset IDs
+    const BoundaryInfo& boundary_info = *mesh.boundary_info;
+    std::cout << "\n sideset IDs and names are... \n";
+    std::set<short int>::iterator ii;
+    for(ii = boundary_info.get_side_boundary_ids().begin();  ii != boundary_info.get_side_boundary_ids().end(); ++ii)
+    {
+        std::cout << *ii <<" " << boundary_info.get_sideset_name(*ii) << std::endl;
+    }
+    std::cout << "\n \n";
+        
+    // print out nodeset IDs
+    std::cout << "\n nodeset IDs and names are... \n";
+    for(ii = boundary_info.get_node_boundary_ids().begin();  ii != boundary_info.get_node_boundary_ids().end(); ++ii)
+    {
+        std::cout << *ii <<" " << boundary_info.get_nodeset_name(*ii) << std::endl;
+    }
+    std::cout << "\n \n";
     
     // All done.
     return 0;

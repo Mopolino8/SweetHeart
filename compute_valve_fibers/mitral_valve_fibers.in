@@ -24,5 +24,5 @@ zero_IDs_2 = 13001
 one_IDs_2 = 13002
 
 #  mesh filename
-mesh_name = idealized_mitral_valve_v4.e
+mesh_name = idealized_mitral_valve_v5.e
 

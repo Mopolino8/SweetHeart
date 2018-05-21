@@ -28,15 +28,15 @@ compute_volume/*.dat
 compute_volume/main
 
 
-mesh_test/*~
-mesh_test/Makefile
-mesh_test/*.e
-mesh_test/run_*
-mesh_test/*.o
-mesh_test/nbproject/
-mesh_test/.*
-mesh_test/*.dat
-mesh_test/main
+probe_exodus_mesh/*~
+probe_exodus_mesh/Makefile
+probe_exodus_mesh/*.e
+probe_exodus_mesh/run_*
+probe_exodus_mesh/*.o
+probe_exodus_mesh/nbproject/
+probe_exodus_mesh/.*
+probe_exodus_mesh/*.dat
+probe_exodus_mesh/main
 
 
 meters/*~
