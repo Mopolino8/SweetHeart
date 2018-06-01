@@ -536,7 +536,7 @@ int main (int argc, char** argv)
   
   // create an equation system object
   EquationSystems equation_system (mesh);
-  mesh.all_second_order(true);
+  //mesh.all_second_order(true);
   
   // set parameters for the equation system and the solver
   equation_system.parameters.set<Real>("linear solver tolerance") = TOLERANCE * TOLERANCE;
