@@ -18,7 +18,7 @@ PK1_DIL_QUAD_ORDER = "THIRD"
 // list of nodeset IDs and plot directory
 nodeset_IDs_for_meters = 1
 plot_directory_name = "viz_inst3d"
-use_QGrid      = TRUE
+use_QGrid = FALSE
         
 // solver parameters
 IB_DELTA_FUNCTION          = "IB_4"            // the type of smoothed delta function to use for Lagrangian-Eulerian interaction
@@ -30,7 +30,7 @@ SOLVER_TYPE                = "STAGGERED"       // the fluid solver to use (STAGG
 CFL_MAX                    = 0.3               // maximum CFL number
 DT                         = 0.0001*DX           // maximum timestep size
 START_TIME                 = 0.0e0             // initial simulation time
-END_TIME                   = DT                 // growth factor for timesteps
+END_TIME                   = DT // 5*DT                 // growth factor for timesteps
 GROW_DT                    = 2.0e0             // growth factor for timesteps
 NUM_CYCLES                 = 1                 // number of cycles of fixed-point iteration
 CONVECTIVE_TS_TYPE         = "ADAMS_BASHFORTH" // convective time stepping type
