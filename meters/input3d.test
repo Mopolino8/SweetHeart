@@ -17,8 +17,10 @@ PK1_DIL_QUAD_ORDER = "THIRD"
 
 // list of nodeset IDs and plot directory
 nodeset_IDs_for_meters = 1
-plot_directory_name = "viz_inst3d"
-use_QGrid = FALSE
+meters_directory_name = "viz_inst3d"
+meters_adaptive_quadrature = TRUE
+meters_quad_type = "QGRID"
+meters_quad_order = "FORTIETH"
         
 // solver parameters
 IB_DELTA_FUNCTION          = "IB_4"            // the type of smoothed delta function to use for Lagrangian-Eulerian interaction
@@ -30,7 +32,7 @@ SOLVER_TYPE                = "STAGGERED"       // the fluid solver to use (STAGG
 CFL_MAX                    = 0.3               // maximum CFL number
 DT                         = 0.0001*DX           // maximum timestep size
 START_TIME                 = 0.0e0             // initial simulation time
-END_TIME                   = DT // 5*DT                 // growth factor for timesteps
+END_TIME                   = 2*DT                 // growth factor for timesteps
 GROW_DT                    = 2.0e0             // growth factor for timesteps
 NUM_CYCLES                 = 1                 // number of cycles of fixed-point iteration
 CONVECTIVE_TS_TYPE         = "ADAMS_BASHFORTH" // convective time stepping type
@@ -128,8 +130,8 @@ VelocityInitialConditions {
      
     function_2 = "0.0"  
     function_1 = "0.0" 
-    //function_0 = "if( sqrt(X_2^2 + X_1^2) < 1.0, (V_peak*(1.0 - X_2^2 - X_1^2) + V_background), V_background )"  
-    function_0 = "if( sqrt(X_2^2 + X_1^2) < 0.5, (4.0*V_peak*(0.25 - X_2^2 - X_1^2) + V_background), V_background )"  
+    function_0 = "if( sqrt(X_2^2 + X_1^2) < 1.0, (V_peak*(1.0 - X_2^2 - X_1^2) + V_background), V_background )"  
+    //function_0 = "if( sqrt(X_2^2 + X_1^2) < 0.5, (4.0*V_peak*(0.25 - X_2^2 - X_1^2) + V_background), V_background )"  
 } 
 
 IBHierarchyIntegrator {
