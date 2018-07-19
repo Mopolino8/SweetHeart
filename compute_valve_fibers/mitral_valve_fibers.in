@@ -18,10 +18,10 @@ cg_penalty = 1.0e10
 elem_type = TET4
 
 # boundary IDs
-zero_IDs_1 = 100 
-one_IDs_1 = 103
-zero_IDs_2 = 101
-one_IDs_2 = 102
+zero_IDs_1 = 13000 
+one_IDs_1 = 13003
+zero_IDs_2 = 13001
+one_IDs_2 = 13002
 
 #  mesh filename
 mesh_name = mitral_valve.e

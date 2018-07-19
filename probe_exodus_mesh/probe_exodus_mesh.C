@@ -1,12 +1,9 @@
-// adapted from libMesh example, miscellaneous/ex5
-
 #include <iostream>
 
 // LibMesh include files.
 #include "libmesh/libmesh.h"
 #include "libmesh/mesh.h"
 #include "libmesh/equation_systems.h"
-#include "libmesh/mesh_data.h"
 #include "libmesh/mesh_generation.h"
 #include "libmesh/mesh_modification.h"
 #include "libmesh/elem.h"
@@ -31,11 +28,9 @@
 #include "libmesh/string_to_enum.h"
 #include "libmesh/boundary_info.h"
 #include "libmesh/point_locator_base.h"
-#include "libmesh/point_locator_list.h"
 #include "libmesh/periodic_boundaries.h"
 #include "libmesh/periodic_boundary.h"
 #include "libmesh/petsc_vector.h"
-
 #include "libmesh/exact_solution.h"
 
 // Bring in everything from the libMesh namespace
@@ -50,7 +45,8 @@ int main (int argc, char** argv)
     
     const std::string mesh_name                  = input_file("mesh_name","");
     const unsigned int dim                       = input_file("dimension", 3);
-  
+    const unsigned int circle_nodeset_ID         = input_file("circle_nodeset_ID", 1);
+    
     Mesh mesh(init.comm(), dim);
    
     ExodusII_IO mesh_reader(mesh);
@@ -81,7 +77,24 @@ int main (int argc, char** argv)
         std::cout << *ii <<" " << boundary_info.get_nodeset_name(*ii) << std::endl;
     }
     std::cout << "\n \n";
+
+    // compute centroid of nodeset.
+    int count = 0;
+    libMesh::Point sum(0.0, 0.0, 0.0);
+    for (unsigned int mm = 0; mm < mesh.n_nodes(); ++mm)
+    {
+        const Node* node_ptr = mesh.node_ptr(mm);
+        std::vector<short int> bdry_ids;
+        boundary_info.boundary_ids(node_ptr, bdry_ids);
+        if ( find(bdry_ids.begin(), bdry_ids.end(), circle_nodeset_ID) != bdry_ids.end() )
+        {
+            count += 1;
+            sum += *node_ptr;
+        }
+    }
+    sum /= static_cast<double>(count);
+    sum.print();
+    std::cout << "\n\n";
     
-    // All done.
     return 0;
 }
