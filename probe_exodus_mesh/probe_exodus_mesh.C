@@ -93,7 +93,10 @@ int main (int argc, char** argv)
         }
     }
     sum /= static_cast<double>(count);
-    sum.print();
+    std::cout.precision(14);
+    std::cout << "x comp = " << sum(0) << "\n";
+    std::cout << "y comp = " << sum(1) << "\n";
+    std::cout << "z comp = " << sum(2) << "\n";
     std::cout << "\n\n";
     
     return 0;

@@ -4,7 +4,9 @@ dimension = 3
 #  mesh filename
 #mesh_name = ascending_aorta_v7.e
 #mesh_name = pulmonary_artery_v7.e
-mesh_name = AortaPart.ex2
+#mesh_name = AortaPart.ex2
+#circle_nodeset_ID = 27004
 
-circle_nodeset_ID = 27004
+mesh_name = PulmArtPart.ex2
+circle_nodeset_ID = 27104
 
