@@ -2,7 +2,7 @@
 dimension = 3 
 
 # minimum approximation order
-p_order = SECOND
+p_order = FIRST
 
 # whether or not to do continuous Galerkin
 continuous_galerkin = false
@@ -24,5 +24,5 @@ zero_IDs_2 = 8001,8101,8201
 one_IDs_2 = 8002,8102,8202
 
 #  mesh filename
-mesh_name = idealized_aortic_valve_v3.e
+mesh_name = idealized_aortic_valve_v5.e
 

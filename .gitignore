@@ -16,6 +16,7 @@ compute_valve_fibers/*.o
 compute_valve_fibers/nbproject/
 compute_valve_fibers/.*
 compute_valve_fibers/valve-fibers-run
+compute_valve_fibers/main*
 
 compute_volume/*~
 compute_volume/Makefile
@@ -30,7 +31,7 @@ compute_volume/main
 
 probe_exodus_mesh/*~
 probe_exodus_mesh/Makefile
-probe_exodus_mesh/*.e
+probe_exodus_mesh/*.e*
 probe_exodus_mesh/run_*
 probe_exodus_mesh/*.o
 probe_exodus_mesh/nbproject/
