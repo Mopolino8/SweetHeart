@@ -45,7 +45,7 @@ int main (int argc, char** argv)
     
     const std::string mesh_name                  = input_file("mesh_name","");
     const unsigned int dim                       = input_file("dimension", 3);
-    const unsigned int circle_nodeset_ID         = input_file("circle_nodeset_ID", 1);
+    const unsigned int circle_nodeset_ID         = input_file("circle_nodeset_ID", -1);
     
     Mesh mesh(init.comm(), dim);
    
@@ -79,25 +79,28 @@ int main (int argc, char** argv)
     std::cout << "\n \n";
 
     // compute centroid of nodeset.
-    int count = 0;
-    libMesh::Point sum(0.0, 0.0, 0.0);
-    for (unsigned int mm = 0; mm < mesh.n_nodes(); ++mm)
+    if (circle_nodeset_ID < 0)
     {
-        const Node* node_ptr = mesh.node_ptr(mm);
-        std::vector<short int> bdry_ids;
-        boundary_info.boundary_ids(node_ptr, bdry_ids);
-        if ( find(bdry_ids.begin(), bdry_ids.end(), circle_nodeset_ID) != bdry_ids.end() )
-        {
-            count += 1;
-            sum += *node_ptr;
-        }
-    }
+      int count = 0;
+      libMesh::Point sum(0.0, 0.0, 0.0);
+      for (unsigned int mm = 0; mm < mesh.n_nodes(); ++mm)
+	{
+	  const Node* node_ptr = mesh.node_ptr(mm);
+	  std::vector<short int> bdry_ids;
+	  boundary_info.boundary_ids(node_ptr, bdry_ids);
+	  if ( find(bdry_ids.begin(), bdry_ids.end(), circle_nodeset_ID) != bdry_ids.end() )
+	    {
+	      count += 1;
+	      sum += *node_ptr;
+	    }
+	}
     sum /= static_cast<double>(count);
     std::cout.precision(14);
     std::cout << "x comp = " << sum(0) << "\n";
     std::cout << "y comp = " << sum(1) << "\n";
     std::cout << "z comp = " << sum(2) << "\n";
     std::cout << "\n\n";
+    }
     
     return 0;
 }
