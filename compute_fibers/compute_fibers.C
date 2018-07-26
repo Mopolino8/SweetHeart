@@ -1,5 +1,3 @@
-// adapted from libMesh example, miscellaneous/ex5
-
 #include <iostream>
 #include <string>
 
@@ -7,7 +5,6 @@
 #include "libmesh/libmesh.h"
 #include "libmesh/mesh.h"
 #include "libmesh/equation_systems.h"
-#include "libmesh/mesh_data.h"
 #include "libmesh/mesh_generation.h"
 #include "libmesh/mesh_modification.h"
 #include "libmesh/elem.h"
@@ -32,7 +29,6 @@
 #include "libmesh/string_to_enum.h"
 #include "libmesh/boundary_info.h"
 #include "libmesh/point_locator_base.h"
-#include "libmesh/point_locator_list.h"
 #include "libmesh/point_locator_tree.h"
 #include "libmesh/periodic_boundaries.h"
 #include "libmesh/periodic_boundary.h"
