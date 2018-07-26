@@ -8,7 +8,7 @@ LIBMESH_DIR ?= /not_backed_up/shared/libMesh/1.0.0/linux-dbg
 # include the library options determined by configure
 include $(LIBMESH_DIR)/Make.common
 
-target     := ./harmonic-run
+target     := ./main
 
 
 ###############################################################################
