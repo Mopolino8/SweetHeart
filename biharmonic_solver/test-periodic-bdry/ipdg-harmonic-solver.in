@@ -1,0 +1,11 @@
+# spatial dimension
+dimension = 2 
+
+# minimum approximation order
+p_order = 1 
+
+# Penalty term, it ensures interior penalty formulation stability
+ip_penalty = 4
+
+# initial number of elements in one dimension
+nx_initial = 32

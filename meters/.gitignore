@@ -1,0 +1,7 @@
+*
+!/.gitignore
+!*.C
+!*.in
+!input*
+!*.cpp
+!*.m

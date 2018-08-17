@@ -1,0 +1,11 @@
+# In what dimension
+dimension = 2 
+
+# initial number of elements in one dimension
+nx_initial = 2
+
+# number of refinement levels 
+num_refinement_levels = 10
+
+# exact solution flag
+exact_sol_flag = 3

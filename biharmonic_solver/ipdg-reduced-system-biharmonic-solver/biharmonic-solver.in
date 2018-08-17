@@ -1,0 +1,14 @@
+# In what dimension
+dimension = 2 
+
+# minimum approximation order
+p_order = 2
+
+# Penalty term, it ensures interior penalty formulation stability
+ip_penalty = 1
+
+# initial number of elements in one dimension
+nx_initial = 2
+
+# number of refinement levels 
+num_refinement_levels = 2

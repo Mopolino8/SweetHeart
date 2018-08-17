@@ -1,0 +1,26 @@
+# In what dimension
+dimension = 2 
+
+# minimum approximation order
+p_order = 2
+
+# Penalty term, it ensures interior penalty formulation stability
+ip_penalty = 1
+
+# penalty scaling
+penalty_scaling = 3
+
+# initial number of elements in one dimension
+nx_initial = 1
+
+# number of refinement levels 
+num_refinement_levels = 6
+
+# flag for exact solution
+exact_solution_flag = 3
+
+# domain_type
+domain_type = circle
+
+# element type
+elem_type = TRI3

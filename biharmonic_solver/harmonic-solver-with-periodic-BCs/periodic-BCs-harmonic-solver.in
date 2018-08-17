@@ -1,0 +1,13 @@
+# spatial dimension
+dimension = 2
+
+# minimum approximation order
+p_order = 2 
+
+poisson_solver             = CG
+ipdg_poisson_penalty       = 2.0
+cg_poisson_penalty         = 1.0e10
+
+# grid spacing parameters
+MFAC = 4.0                                     // ratio of Lagrangian mesh width to Cartesian mesh width
+CONVERGENCE_STUDY = FALSE 
